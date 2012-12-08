@@ -79,24 +79,30 @@ void midiread_cb(const MIDIPacketList *pktlist,
 
 const unsigned char program[] =
 {
-  0, LDG, 0, LDP, FIU, 24, IADD, NDP, ADD, PHR, 0, STG, /*SGN,*/ 1, LDP, MUL,
+  0, LDG, 0, LDP, FIU, 36, IADD, NDP, ADD, PHR, 0, STG, 1, LDP, MUL,
   65, LDP, MUL,
-  1, LDG, 2, LDP, FIU, 24, IADD, NDP, ADD, PHR, 1, STG, /*SGN,*/ 1, LDP, MUL,
+  1, LDG, 2, LDP, FIU, 24, IADD, NDP, ADD, PHR, 1, STG, SIN, 1, LDP, MUL,
   66, LDP, MUL,
+  ADD,
+  //68, LDP, FIU, 69, LDP, FIU, IMUL,
+  64, 64, IMUL, 3, IMUL,
+  0, ROF, POP, 0, RRD, 68, LDP, MUL, ADD, 0, RWR,
+  
+  2, LDG, 4, LDP, FIU, /*24, IADD,*/ NDP, ADD, PHR, 2, STG, SGN, /*1, LDP, MUL,*/
+  67, LDP, MUL,
+  
+  
+  
   ADD, 63, IFU, MUL,
-//  0, 63, ROF,
-//  0, RRD, 63, MUL, 0, RWR,
-  //1, LDG, 1, LDP, FIU, 24, IADD, NDP, ADD, PHR, 1, STG,
-  //2, LDG, 2, LDP, FIU, 24, IADD, NDP, ADD, PHR, 2, STG,
-  //ADD, ADD, 42, IFU, MUL,
-  RET
+  
+  CLAMP, RET
 };
 
 u8 m0[8] = {17, 17, 15, 15, 12, 12, 10, 10};
-unsigned short dm0[8] = {0, 8191, 0, 8191, 0, 8191, 0, 8191};
+unsigned short dm0[8] = {0, 8190, 0, 8190, 0, 8190, 0, 8190};
 
 u8 e0[8] = {127, 0, 127, 0, 127, 0, 127, 0};
-unsigned short de0[8] = {90, 8100, 90, 8100, 90, 8100, 90, 8100};
+unsigned short de0[8] = {190, 8000, 190, 8000, 190, 8000, 190, 8000};
 
 u8 m1[8] = {22, 22, 17, 17, 15, 15, 12, 12};
 

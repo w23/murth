@@ -3,9 +3,9 @@
 extern void synth(short* ptr, int count);
 
 enum {
-  LDG = 128, STG, LDP, ADD, PHR, SIN, FIU, NDP,
+  LDG = 128, STG, LDP, ADD, PHR, SIN, CLAMP, FIU, NDP,
   IFU, MUL, IADD, DUP, NDUP, SGN,
-  RWR, RRD, ROF, POP,
+  RWR, RRD, ROF, POP, IMUL,
   RET = 255
 };
 

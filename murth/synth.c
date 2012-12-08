@@ -3,7 +3,7 @@
 
 #define STACK_SIZE 128
 #define MAX_GLOBALS 128
-#define MAX_RINGBUFFERS 128
+#define MAX_RINGBUFFERS 8
 #define RINGBUFFER_SIZE 65536
 #define RINGBUFFER_SIZEMASK 65535
 
@@ -57,6 +57,14 @@ void i_f2iu() {
   top->i = top->f * 127;
 }
 
+void i_n2dp() {
+  int n = top->i;
+  float kht = 1.059463f; //2^(1/12)
+  float f = 55.f / 44100.f;
+  while(--n>=0) f *= kht; // cheap pow!
+  top->f = f;
+}
+
 void i_i2fu() {
   top->f = top->i / 127.f;
 }
@@ -93,14 +101,14 @@ void i_rwr() {
 }
 
 void i_rrd() {
-  float v = ringbuffers[top->i].samples[ringbuffers[top->i].writepos];
-  ++ringbuffers[top->i].readpos;
-  ringbuffers[top->i].readpos &= RINGBUFFER_SIZEMASK;
+  float v = ringbuffers[top->i].samples[ringbuffers[top->i].readpos];
+//  ++ringbuffers[top->i].readpos;
+//  ringbuffers[top->i].readpos &= RINGBUFFER_SIZEMASK;
   top->f = v;
 }
 
 void i_rof() {
-  ringbuffers[top->i].readpos = ringbuffers[top->i].writepos - (top[1].f * RINGBUFFER_SIZE);
+  ringbuffers[top->i].readpos = ringbuffers[top->i].writepos - top[1].i;
   ringbuffers[top->i].readpos &= RINGBUFFER_SIZEMASK;
   ++top;
 }
@@ -109,22 +117,21 @@ void i_pop() {
   ++top;
 }
 
-void i_n2dp() {
-  int n = top->i;
-  float kht = 1.059463f; //2^(1/12)
-  float f = 55.f / 44100.f;
-  while(--n>=0) f *= kht; // cheap pow!
-  top->f = f;
+void i_imul() {
+  top[1].i *= top->i;
+  ++top;
 }
 
 instr instruction_table[64] = {
-  i_ldg, i_stg, i_ldp, i_add, i_phrot, i_sin, i_f2iu, i_n2dp,
+  i_ldg, i_stg, i_ldp, i_add, i_phrot, i_sin, i_clamp, i_f2iu, i_n2dp,
   i_i2fu, i_mul, i_iadd, i_dup, i_ndup, i_sgn,
-  i_rwr, i_rrd, i_rof, i_pop
+  i_rwr, i_rrd, i_rof, i_pop, i_imul
 };
 
 //#define L(...) printf(__VA_ARGS__)
+#ifndef L
 #define L(...) {}
+#endif
 
 void run(int offset)
 {
