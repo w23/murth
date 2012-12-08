@@ -2,27 +2,35 @@
 #include "synth.h"
 
 #define STACK_SIZE 128
+#define MAX_GLOBALS 128
+#define MAX_RINGBUFFERS 128
+#define RINGBUFFER_SIZE 65536
+#define RINGBUFFER_SIZEMASK 65535
+
+ifu globals[MAX_GLOBALS] = {0};
+ifu params[MAX_PARAMS];
+
+struct {
+  unsigned writepos;
+  unsigned readpos;
+  float samples[RINGBUFFER_SIZE];
+} ringbuffers[MAX_RINGBUFFERS] = {0};
 
 typedef void(*instr)(void);
-
 ifu stack[STACK_SIZE];
 ifu *top;
 
-int globals[128] = { 0 };
-float params[128] = { 12 / 127., 17 / 127., 19 / 127. };
-
 void i_ldg() {
-  top->i = globals[top->i];
+  top->i = globals[top->i].i;
 }
 
 void i_stg() {
-  globals[top->i] = top[1].i;
+  globals[top->i].i = top[1].i;
   ++top;
 }
 
 void i_ldp() {
-  float p = params[top->i];
-  top->f = p;
+  top->f = params[top->i].f;
 }
 
 void i_add() {
@@ -63,6 +71,44 @@ void i_iadd() {
   ++top;
 }
 
+void i_dup() {
+  --top;
+  top->i = top[1].i;
+}
+
+void i_ndup() {
+  --top;
+  top->i = top[top[1].i+1].i;
+}
+
+void i_sgn() {
+  top->f = top->f < 0 ? -1.f : 1.f;
+}
+
+void i_rwr() {
+  ringbuffers[top->i].samples[ringbuffers[top->i].writepos] = top[1].f;
+  ++ringbuffers[top->i].writepos;
+  ringbuffers[top->i].writepos &= RINGBUFFER_SIZEMASK;
+  ++top;
+}
+
+void i_rrd() {
+  float v = ringbuffers[top->i].samples[ringbuffers[top->i].writepos];
+  ++ringbuffers[top->i].readpos;
+  ringbuffers[top->i].readpos &= RINGBUFFER_SIZEMASK;
+  top->f = v;
+}
+
+void i_rof() {
+  ringbuffers[top->i].readpos = ringbuffers[top->i].writepos - (top[1].f * RINGBUFFER_SIZE);
+  ringbuffers[top->i].readpos &= RINGBUFFER_SIZEMASK;
+  ++top;
+}
+
+void i_pop() {
+  ++top;
+}
+
 void i_n2dp() {
   int n = top->i;
   float kht = 1.059463f; //2^(1/12)
@@ -73,7 +119,8 @@ void i_n2dp() {
 
 instr instruction_table[64] = {
   i_ldg, i_stg, i_ldp, i_add, i_phrot, i_sin, i_f2iu, i_n2dp,
-  i_i2fu, i_mul, i_iadd
+  i_i2fu, i_mul, i_iadd, i_dup, i_ndup, i_sgn,
+  i_rwr, i_rrd, i_rof, i_pop
 };
 
 //#define L(...) printf(__VA_ARGS__)
@@ -87,7 +134,7 @@ void run(int offset)
     L("[%03d] ", icode);
     if (icode < 128)
       (--top)->i = icode;
-    else if (icode == 255)
+    else if (icode == RET)
       return;
     else
       instruction_table[icode&127]();
@@ -95,10 +142,31 @@ void run(int offset)
   }
 }
 
+struct {
+  int pos;
+  float dv;
+  unsigned short sampleft;
+} paramstates[MAX_PARAMS] = {0};
+
 void synth(short *ptr, int count)
 {
   for (int i = 0; i < count; ++i)
   {
+    for (int j = 0; j < nparamtbls; ++j)
+    {
+      if (paramstates[j].sampleft == 0)
+      {
+        params[j].f = paramtbls[j].values[paramstates[j].pos] / 127.f;
+        ++paramstates[j].pos;
+        paramstates[j].pos %= paramtbls[j].count;
+        paramstates[j].sampleft = paramtbls[j].dsamples[paramstates[j].pos];
+        paramstates[j].dv = (paramtbls[j].values[paramstates[j].pos] / 127.f - params[j].f) / (float)(paramtbls[j].dsamples[paramstates[j].pos] + 1);
+      } else {
+        params[j].f += paramstates[j].dv;
+        --paramstates[j].sampleft;
+      }
+    }
+
     top = stack + STACK_SIZE;
     run(0);
     ptr[i] = top->f * 32767.f;

@@ -11,6 +11,8 @@
 		E131FFD4167222DA0062B175 /* synth.c in Sources */ = {isa = PBXBuildFile; fileRef = E131FFC0167222550062B175 /* synth.c */; };
 		E131FFD6167222F10062B175 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E131FFD5167222F10062B175 /* CoreAudio.framework */; };
 		E131FFD8167222FE0062B175 /* AudioUnit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E131FFD7167222FE0062B175 /* AudioUnit.framework */; };
+		E131FFDB1672F8380062B175 /* CoreMIDI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E131FFDA1672F8380062B175 /* CoreMIDI.framework */; };
+		E131FFDD1672FA0F0062B175 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E131FFDC1672FA0F0062B175 /* CoreFoundation.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -32,6 +34,8 @@
 		E131FFD5167222F10062B175 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/System/Library/Frameworks/CoreAudio.framework; sourceTree = DEVELOPER_DIR; };
 		E131FFD7167222FE0062B175 /* AudioUnit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioUnit.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/System/Library/Frameworks/AudioUnit.framework; sourceTree = DEVELOPER_DIR; };
 		E131FFD91672E9C80062B175 /* synth.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = synth.h; sourceTree = "<group>"; };
+		E131FFDA1672F8380062B175 /* CoreMIDI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMIDI.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/System/Library/Frameworks/CoreMIDI.framework; sourceTree = DEVELOPER_DIR; };
+		E131FFDC1672FA0F0062B175 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/System/Library/Frameworks/CoreFoundation.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -39,6 +43,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E131FFDD1672FA0F0062B175 /* CoreFoundation.framework in Frameworks */,
+				E131FFDB1672F8380062B175 /* CoreMIDI.framework in Frameworks */,
 				E131FFD8167222FE0062B175 /* AudioUnit.framework in Frameworks */,
 				E131FFD6167222F10062B175 /* CoreAudio.framework in Frameworks */,
 			);
@@ -50,6 +56,8 @@
 		E131FFB4167220C50062B175 = {
 			isa = PBXGroup;
 			children = (
+				E131FFDC1672FA0F0062B175 /* CoreFoundation.framework */,
+				E131FFDA1672F8380062B175 /* CoreMIDI.framework */,
 				E131FFD91672E9C80062B175 /* synth.h */,
 				E131FFC0167222550062B175 /* synth.c */,
 				E131FFC1167222550062B175 /* play_osx.c */,
