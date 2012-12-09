@@ -1,17 +1,26 @@
 #pragma once
 
-#define LOAD_SHORT(v) LOND, (((int)(v))>>8), (((int)(v))&0xff)
 #define MAX_PARAMS 128
-#define TICK 10000 /* makes gcc happy */
 
-typedef unsigned char u8;
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+extern void synth(short* ptr, int count);
 
 enum {
   LDG = 128, STG, LDP, ADD, PHR, SIN, CLAMP, FIU, NDP,
   IFU, MUL, IADD, DUP, NDUP, SGN,
-  RWR, RRD, ROF, POP, IMUL,
+  RWR, RRD, ROF, POP, IMUL, PROBE,
   LOND = 254, RET = 255
 };
+
+#define LOAD_SHORT(v) LOND, (((int)(v))>>8), (((int)(v))&0xff)
+
+#define PROBE(p) (p), PROBE
+
+typedef unsigned char u8;
+extern const u8 program[];
 
 typedef struct {
   union {
@@ -26,6 +35,21 @@ typedef struct {
   unsigned short *dsamples;
 } paramtbl;
 
-extern const unsigned short tick;
+  
+extern paramtbl paramtbls[];
+extern int nparamtbls;
 
-extern void synth(short* ptr, int count);
+
+extern ifu params[MAX_PARAMS];
+
+typedef struct {
+  int pos;
+  int size;
+  ifu *values;
+} probe;
+
+extern probe probes[];
+
+#ifdef __cplusplus
+}
+#endif

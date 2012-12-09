@@ -10,6 +10,14 @@ extern "C" {
   extern void audio_stop();
 }
 
+ifu probdata[4][4096];
+probe probes[4] = {
+  {0, 4096, probdata[0]},
+  {0, 4096, probdata[1]},
+  {0, 4096, probdata[2]},
+  {0, 4096, probdata[3]},
+};
+
 class Visuport : public IViewport
 {
 public:
@@ -22,6 +30,8 @@ private:
   IViewportController *controller_;
   Batch *batch_;
   bool is_playing_;
+  
+  Texture tex[4];
 };
 
 IViewport *makeViewport()
@@ -39,18 +49,28 @@ void Visuport::init(IViewportController *system)
   "uniform vec2 aspect;\n"
   "uniform float time;\n"
   "attribute vec4 vtx;\n"
+  "varying vec2 p;\n"
   "varying vec3 pos, dir;\n"
+  "varying mat3 cuberot;\n"
   "void main(){\n"
-  "gl_Position = vtx;\n"
-    "vec2 p = vtx.xy * aspect;\n"
-    "vec2 sc = vec2(sin(time),cos(time));\n"
-    "mat3 m = mat3(sc.y, 0., sc.x, 0., 1., 0., -sc.x, 0., sc.y);\n"
-    "pos = vec3(p, -1.) * m;\n"
+    "gl_Position = vtx;\n"
+    "p = vtx.xy * aspect;\n"
+    "vec2 sc = vec2(sin(-time*.5),cos(-time*.5));\n"
+    //"vec2 sc = vec2(0., 1.);\n"
+    //"mat3 m = mat3(sc.y, 0., sc.x, 0., 1., 0., -sc.x, 0., sc.y);\n"
+    "mat3 m = mat3(1., 0., 0., 0., sc.y, sc.x, 0., -sc.x, sc.y);\n"
+    "sc = vec2(sin(-time*.2),cos(-time*.2));\n"
+    "cuberot = mat3(sc.y, sc.x, 0., -sc.x, sc.y, 0., 0., 0., 1.);\n"
+    "pos = vec3(p, -.1) * m;\n"
     "dir = vec3(p, 1.) * m;\n"
   "}"
   ;
   const char* sfrg =
+  "uniform float time;\n"
+  "uniform sampler2D p0, p1, p2, p3;\n"
+  "varying vec2 p;\n"
   "varying vec3 pos, dir;\n"
+  "varying mat3 cuberot;\n"
   
   "float sphere(vec3 a, float r){\n"
     "return length(a) - r;\n"
@@ -69,7 +89,8 @@ void Visuport::init(IViewportController *system)
   "}\n"
   
   "float world(vec3 a){\n"
-    "return min(max(-sphere(repeat(a,vec3(1.)), .6), cube(repeat(a,vec3(3.)), vec3(1.))), a.y + 1.);\n"
+    //"return min(max(-sphere(repeat(a,vec3(1.)), .6), cube(repeat(a,vec3(3.)), vec3(1.))), a.y + 1.);\n"
+    "return max(-sphere(repeat(a+.2*texture2D(p3, vec2((a.z+time)*.1,0.)).wxx,vec3(1.)), .6), cube(repeat(a*cuberot,vec3(3.)), vec3(1.)));\n"
   "}\n"
   
   "vec3 normal(vec3 a){\n"
@@ -81,10 +102,7 @@ void Visuport::init(IViewportController *system)
     "vec3 ld = l-a;\n"
     "return max(0.,dot(ld, normal(a))) / dot(ld,ld);\n"
   "}\n"
-  
-  "float occlusion(vec3 a){\n"
-  ""
-  
+    
   "vec4 trace(vec3 p, vec3 d, float maxL){\n"
     "float L = 0.;\n"
     "d = normalize(d);\n"
@@ -98,11 +116,20 @@ void Visuport::init(IViewportController *system)
   "}\n"
   
   "void main(){\n"
-    "vec4 t = trace(pos, dir, 10.);\n"
+    "vec4 t = trace(pos, dir+.1*texture2D(p3,vec2(p.x*.1+time*.1,0.)).wxx, 10.);\n"
     "vec3 color = .2 * vec3(1. - t.w / 10.);\n"
-    "color += diffuseLight(t.xyz, vec3(2.)) * vec3(.8,.8,.4);\n"
-    "color += diffuseLight(t.xyz, vec3(2.,2.,-3.)) * vec3(.3,.8,.8);\n"
-    "gl_FragColor = vec4(color, 1.);\n"
+    "vec2 sc = vec2(sin(time),cos(time));\n"
+    "mat3 m = mat3(sc.y, 0., sc.x, 0., 1., 0., -sc.x, 0., sc.y);\n"
+    "color += diffuseLight(t.xyz, vec3(2.)*m) * vec3(.8,.8,.4);\n"
+    "color += diffuseLight(t.xyz, vec3(2.,2.,-3.)*(-m)) * vec3(.3,.8,.8);\n"
+    "gl_FragColor = vec4(color, 1.)"
+      "+ vec4(.3) * abs(1.-smoothstep(.19, .20, 10.*abs(texture2D(p3,vec2(p.x*.1+.1+time/4.41,0.)).w-p.y)))"
+      "+ texture2D(p0, p) * 0."
+      "+ texture2D(p1, p) * 0."
+      "+ texture2D(p2, p) * 0."
+      "+ texture2D(p3, p) * 0."
+      ";\n"
+    "gl_FragDepth = t.w;\n"
   "}"
   ;
   Material *mat = new Material(new Program(svtx, sfrg));
@@ -136,8 +163,17 @@ void Visuport::draw(int ms, float dt)
     is_playing_ = true;
   }
   
+  tex[0].upload(Texture::ImageDesc(64, 64, Texture::ImageDesc::Format_R32F), probdata[0]);
+  tex[1].upload(Texture::ImageDesc(64, 64, Texture::ImageDesc::Format_R32F), probdata[1]);
+  tex[2].upload(Texture::ImageDesc(64, 64, Texture::ImageDesc::Format_R32F), probdata[2]);
+  tex[3].upload(Texture::ImageDesc(4096, 1, Texture::ImageDesc::Format_R32F), probdata[3]);
+  
   float time = ms / 1000.f;
   batch_->getMaterial()->setUniform("time", time);
+  batch_->getMaterial()->setTexture("p0", &tex[0]);
+  batch_->getMaterial()->setTexture("p1", &tex[1]);
+  batch_->getMaterial()->setTexture("p2", &tex[2]);
+  batch_->getMaterial()->setTexture("p3", &tex[3]);
   batch_->draw();
   controller_->requestRedraw();
 }

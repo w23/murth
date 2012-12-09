@@ -1,6 +1,5 @@
 #include <math.h>
 #include "synth.h"
-#include "program.h"
 
 #define STACK_SIZE 128
 #define MAX_GLOBALS 128
@@ -10,8 +9,6 @@
 
 ifu globals[MAX_GLOBALS]; /* = { {.i = 0} }; */
 ifu params[MAX_PARAMS]; /* = { {.i = 0} }; */
-
-const unsigned short tick = 10000;
 
 struct {
   unsigned writepos;
@@ -125,10 +122,16 @@ void i_imul() {
   ++top;
 }
 
+void i_probe() {
+  probes[top->i].values[probes[top->i].pos] = top[1];
+  probes[top->i].pos = (probes[top->i].pos+1) % probes[top->i].size;
+  ++top;
+}
+
 instr instruction_table[64] = {
   i_ldg, i_stg, i_ldp, i_add, i_phrot, i_sin, i_clamp, i_f2iu, i_n2dp,
   i_i2fu, i_mul, i_iadd, i_dup, i_ndup, i_sgn,
-  i_rwr, i_rrd, i_rof, i_pop, i_imul
+  i_rwr, i_rrd, i_rof, i_pop, i_imul, i_probe
 };
 
 //#define L(...) printf(__VA_ARGS__)

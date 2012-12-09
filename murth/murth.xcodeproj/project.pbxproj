@@ -539,6 +539,7 @@
 				E171C4F316745B2B0092E77A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
