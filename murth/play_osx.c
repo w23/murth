@@ -122,9 +122,7 @@ const unsigned char program[] =
   ADD,
 
   // delay (m0 + m1)
-  //68, LDP, FIU, 69, LDP, FIU, IMUL,
   LOAD_SHORT(tick*1.5),
-  //LOND, 0x75, 0x30,
   0, ROF, POP, 0, RRD, 68, LDP, MUL, ADD, 0, RWR,
   
   // m2
@@ -137,6 +135,10 @@ const unsigned char program[] =
   
   // sum all
   ADD,
+  
+  // postfx
+  70, LDP, FIU, 71, LDP, FIU, IMUL,
+  2, ROF, POP, 2, RRD, 72, LDP, MUL, ADD, 2, RWR,
   
   //2, LDG, 4, LDP, FIU, /*24, IADD,*/ NDP, ADD, PHR, 2, STG, SGN, /*1, LDP, MUL,*/
   //67, LDP, MUL,
