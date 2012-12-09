@@ -1,5 +1,6 @@
 #include <math.h>
 #include "synth.h"
+#include "program.h"
 
 #define STACK_SIZE 128
 #define MAX_GLOBALS 128
@@ -7,14 +8,16 @@
 #define RINGBUFFER_SIZE 65536
 #define RINGBUFFER_SIZEMASK 65535
 
-ifu globals[MAX_GLOBALS] = {0};
-ifu params[MAX_PARAMS];
+ifu globals[MAX_GLOBALS]; /* = { {.i = 0} }; */
+ifu params[MAX_PARAMS]; /* = { {.i = 0} }; */
+
+const unsigned short tick = 10000;
 
 struct {
   unsigned writepos;
   unsigned readpos;
   float samples[RINGBUFFER_SIZE];
-} ringbuffers[MAX_RINGBUFFERS] = {0};
+} ringbuffers[MAX_RINGBUFFERS]; /* = { {0, 0, {0.0}} }; */
 
 typedef void(*instr)(void);
 ifu stack[STACK_SIZE];
@@ -157,7 +160,7 @@ struct {
   int pos;
   float dv;
   unsigned short sampleft;
-} paramstates[MAX_PARAMS] = {0};
+} paramstates[MAX_PARAMS] = { {0, 0.0, 0} };
 
 void synth(short *ptr, int count)
 {
