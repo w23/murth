@@ -6,8 +6,10 @@ enum {
   LDG = 128, STG, LDP, ADD, PHR, SIN, CLAMP, FIU, NDP,
   IFU, MUL, IADD, DUP, NDUP, SGN,
   RWR, RRD, ROF, POP, IMUL,
-  RET = 255
+  LOND = 254, RET = 255
 };
+
+#define LOAD_SHORT(v) LOND, (((int)(v))>>8), (((int)(v))&0xff)
 
 typedef unsigned char u8;
 extern const u8 program[];

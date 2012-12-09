@@ -141,7 +141,11 @@ void run(int offset)
     L("[%03d] ", icode);
     if (icode < 128)
       (--top)->i = icode;
-    else if (icode == RET)
+    else if (icode == LOND)
+    {
+      (--top)->i = (((int)program[offset+1]) << 8) | (int)(program[offset+2]);
+      offset += 2;
+    } else if (icode == RET)
       return;
     else
       instruction_table[icode&127]();
