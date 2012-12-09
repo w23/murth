@@ -3,16 +3,7 @@
 #include <stdio.h>
 #include "synth.h"
 
-#define LENGTH_SAMPLES 44100 * 10
-
 #define CHECK_ERR(msg) {if(err!=noErr){printf("Error %d(0x%8x): %s\n", err, err, msg);exit(-1);}}
-
-/*typedef struct
-{
-  short samples[LENGTH_SAMPLES];
-  int writepos;
-} ABuffer;
-ABuffer audio_buffer;*/
 
 OSStatus audio_cb(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags,
                   const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber,
@@ -21,14 +12,6 @@ OSStatus audio_cb(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags,
   
   AudioBuffer* buf = &ioData->mBuffers[0];
   short* ptr = (short*)buf->mData;
-  /*ABuffer* abuf = (ABuffer*)inRefCon;
-  while (abuf->writepos < LENGTH_SAMPLES && inNumberFrames > 0)
-  {
-    *ptr++ = abuf->samples[abuf->writepos++];
-    inNumberFrames--;
-    if (abuf->writepos == LENGTH_SAMPLES)
-      exit(0);
-  }*/
   synth(ptr, inNumberFrames);
   return noErr;
 }
@@ -149,10 +132,8 @@ const unsigned char program[] =
   CLAMP, RET
 };
 
-int main(int argc, char* argv[])
+void audio_play()
 {
-  //synth(audio_buffer.samples, LENGTH_SAMPLES);
-  
   AudioComponentDescription ac_desc;
   ac_desc.componentType = kAudioUnitType_Output;
   ac_desc.componentSubType = kAudioUnitSubType_DefaultOutput;
@@ -208,14 +189,13 @@ int main(int argc, char* argv[])
     MIDIPortConnectSource(mport, MIDIGetSource(i), 0);
   
   err = AudioOutputUnitStart(aci);
-  CHECK_ERR("AudioOutputUnitStart")
+  CHECK_ERR("AudioOutputUnitStart");
+}
 
-  for(;;) sleep(10);
-  
+void audio_stop()
+{
 #if CLEANDESTROY
   err = AudioComponentInstanceDispose(aci);
   CHECK_ERR("AudioComponentInstanceDispose")
 #endif
-  
-  return 0;
 }

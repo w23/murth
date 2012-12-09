@@ -1,0 +1,7 @@
+//
+// Prefix header for all source files of the 'vismurth' target in the 'vismurth' project
+//
+
+#ifdef __OBJC__
+  #import <Cocoa/Cocoa.h>
+#endif
