@@ -134,6 +134,8 @@ const unsigned char program[] =
 
 void audio_play()
 {
+  for (int i = 0; i < MAX_PARAMS; ++i) params[i].f = .5f;
+  
   AudioComponentDescription ac_desc;
   ac_desc.componentType = kAudioUnitType_Output;
   ac_desc.componentSubType = kAudioUnitSubType_DefaultOutput;
