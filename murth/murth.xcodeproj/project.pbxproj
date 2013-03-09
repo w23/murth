@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E123986416E7B9E8004301BA /* Ground.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E123986216E7B9E8004301BA /* Ground.cpp */; };
 		E131FFD3167222D70062B175 /* play_osx.c in Sources */ = {isa = PBXBuildFile; fileRef = E131FFC1167222550062B175 /* play_osx.c */; };
 		E131FFD4167222DA0062B175 /* synth.c in Sources */ = {isa = PBXBuildFile; fileRef = E131FFC0167222550062B175 /* synth.c */; };
 		E131FFD6167222F10062B175 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E131FFD5167222F10062B175 /* CoreAudio.framework */; };
@@ -30,6 +31,20 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		E123986B16E7B9E9004301BA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E171C4BB167453A70092E77A /* Kapusha.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = E189E890169AB3F300541FE1;
+			remoteInfo = "kapusha-core-osx";
+		};
+		E123986D16E7B9E9004301BA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E171C4BB167453A70092E77A /* Kapusha.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = E197CBF216B3AD88003FDEF6;
+			remoteInfo = "kapusha-glut";
+		};
 		E171C4C7167453A80092E77A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E171C4BB167453A70092E77A /* Kapusha.xcodeproj */;
@@ -73,6 +88,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		E123986216E7B9E8004301BA /* Ground.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Ground.cpp; sourceTree = "<group>"; };
+		E123986316E7B9E8004301BA /* Ground.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Ground.h; sourceTree = "<group>"; };
 		E131FFC0167222550062B175 /* synth.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = synth.c; sourceTree = "<group>"; };
 		E131FFC1167222550062B175 /* play_osx.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = play_osx.c; sourceTree = "<group>"; };
 		E131FFC8167222C80062B175 /* murth */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = murth; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -169,6 +186,8 @@
 				E171C4CA167453A80092E77A /* samples-ios.app */,
 				E171C4CC167453A80092E77A /* kapusha-samples.app */,
 				E171C4CE167453A80092E77A /* libkapusha.a */,
+				E123986C16E7B9E9004301BA /* libkapushacore.a */,
+				E123986E16E7B9E9004301BA /* libkapusha-glut.a */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -200,6 +219,8 @@
 				E171C4EC16745B2B0092E77A /* MURAppDelegate.mm */,
 				E171C4EE16745B2B0092E77A /* MainMenu.xib */,
 				E171C4E016745B2B0092E77A /* Supporting Files */,
+				E123986216E7B9E8004301BA /* Ground.cpp */,
+				E123986316E7B9E8004301BA /* Ground.h */,
 			);
 			path = vismurth;
 			sourceTree = "<group>";
@@ -286,6 +307,20 @@
 /* End PBXProject section */
 
 /* Begin PBXReferenceProxy section */
+		E123986C16E7B9E9004301BA /* libkapushacore.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libkapushacore.a;
+			remoteRef = E123986B16E7B9E9004301BA /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E123986E16E7B9E9004301BA /* libkapusha-glut.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libkapusha-glut.a";
+			remoteRef = E123986D16E7B9E9004301BA /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
 		E171C4C8167453A80092E77A /* libkapusha.a */ = {
 			isa = PBXReferenceProxy;
 			fileType = archive.ar;
@@ -348,6 +383,7 @@
 				E171C4F916745C7F0092E77A /* osx_vis.cpp in Sources */,
 				E171C4FA16745ECC0092E77A /* synth.c in Sources */,
 				E171C4FB16745EDE0092E77A /* play_osx.c in Sources */,
+				E123986416E7B9E8004301BA /* Ground.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
