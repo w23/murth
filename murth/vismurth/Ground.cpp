@@ -3,23 +3,27 @@
 static const char shader_vertex[] =
 "attribute vec3 av3_pos, av3_normal;\n"
 "uniform mat4 um4_mvp;\n"
-"varying vec3 vv3_normal;\n"
+"uniform vec3 uv3_l1_pos, uv3_l1_color;"
+"varying vec3 vv3_color;\n"
 "void main() {\n"
   "gl_Position = um4_mvp * vec4(av3_pos, 1.);\n"
-  "vv3_normal = av3_normal;\n"
+  "vec3 l1dir = uv3_l1_pos - av3_pos;\n"
+  "vv3_color = vec3(.2) + uv3_l1_color * (10. * dot(av3_normal,l1dir) / dot(l1dir,l1dir));\n"
 "}\n";
 static const char shader_fragment[] =
-"varying vec3 vv3_normal;\n"
+"varying vec3 vv3_color;\n"
 "void main() {\n"
-  "gl_FragColor = vec4(vv3_normal, 1.) + vec4(.5);\n"
+  "gl_FragColor = vec4(vv3_color, 1.);\n"
 "}\n";
 
-Ground::Ground() {
+Ground::Ground(int detail, float size) : detail_(detail), size_(size) {
   Program *p = new Program(shader_vertex, shader_fragment);
   Material *m = new Material(p);
+  m->setUniform("uv3_l1_pos", vec3f(0,0,8.f));
+  m->setUniform("uv3_l1_color", vec3f(.8f, .7f, .2f));
   Batch *b = new Batch(m);
   vertices_ = new Buffer();
-  generatePlane(64, 1.f);
+  generatePlane();
   vertices_->alloc(nvertices_ * sizeof(vertex_t), Buffer::StreamDraw);
   b->setGeometry(Batch::GeometryTriangleList, 0, nvertices_);
   update(0, 0);
@@ -31,11 +35,30 @@ Ground::Ground() {
 }
 
 Ground::~Ground() {
+  delete raw_velocities_;
   delete raw_vertices_;
   delete raw_indices_;
 }
 
 void Ground::update(u32 t, float dt) {
+  int stride = detail_ + 1;
+  if (dt > .016) dt = .016;
+  //dt = 0.016;
+  for (int y = 1; y < detail_; ++y) {
+    vertex_t *pvtx = raw_vertices_ + stride * y + 1;
+    float *pvel = raw_velocities_ + stride * y + 1;
+    for (int x = 1; x < detail_; ++x, ++pvtx, ++pvel) {
+      float a = 0;
+      a += pvtx[-stride].p.z - pvtx[0].p.z;
+      a += pvtx[+stride].p.z - pvtx[0].p.z;
+      a += pvtx[-1].p.z - pvtx[0].p.z;
+      a += pvtx[+1].p.z - pvtx[0].p.z;
+      pvel[0] += a * dt * 4.f;
+      pvtx[0].p.z += pvel[0] * dt;
+      pvel[0] *= .995f;
+    }
+  }
+  
   calcNormals();
   
   vertex_t *bv = static_cast<vertex_t*>(vertices_->map(Buffer::WriteOnly));
@@ -52,29 +75,31 @@ void Ground::update(u32 t, float dt) {
   vertices_->unmap();
 }
 
-void Ground::generatePlane(int detail, float size)
-{
-  ntriangles_ = detail * detail * 2;
+void Ground::generatePlane() {
+  ntriangles_ = detail_ * detail_ * 2;
   nvertices_ = ntriangles_ * 3;
-  nraw_vertices_ = (detail + 1) * (detail + 1);
+  nraw_vertices_ = (detail_ + 1) * (detail_ + 1);
   raw_vertices_ = new vertex_t[nraw_vertices_];
+  raw_velocities_ = new float[nraw_vertices_];
   vertex_t *p = raw_vertices_;
-  const float offset = - detail * size * .5;
-  for (int y = 0; y <= detail; ++y) {
-    float vy = offset + size * y;
-    for (int x = 0; x <= detail; ++x, ++p) {
-      p->p.x = offset + size * x;
+  float *pv = raw_velocities_;
+  const float offset = - detail_ * size_ * .5;
+  for (int y = 0; y <= detail_; ++y) {
+    float vy = offset + size_ * y;
+    for (int x = 0; x <= detail_; ++x, ++p, ++pv) {
+      p->p.x = offset + size_ * x;
       p->p.y = vy;
-      p->p.z = frand(-size, size);
+      p->p.z = (x!=0 && y!=0 && x!=detail_ && y!=detail_)?frand(-size_, size_):0;
+      *pv = 0;
     }
   }
   
   int *pi = raw_indices_ = new int[ntriangles_ * 3];
   int index = 0;
-  for (int y = 0; y < detail; ++y, ++index)
-    for (int x = 0; x < detail; ++x, ++index) {
-      *(pi++) = index, *(pi++) = index + 1, *(pi++) = index + detail + 2;
-      *(pi++) = index, *(pi++) = index + detail + 2, *(pi++) = index + detail + 1;
+  for (int y = 0; y < detail_; ++y, ++index)
+    for (int x = 0; x < detail_; ++x, ++index) {
+      *(pi++) = index, *(pi++) = index + 1, *(pi++) = index + detail_ + 2;
+      *(pi++) = index, *(pi++) = index + detail_ + 2, *(pi++) = index + detail_ + 1;
     }
 }
 
@@ -89,4 +114,12 @@ void Ground::calcNormals() {
     v0.n += normal, v1.n += normal, v2.n += normal;
   }
   //for (int i = 0; i < nraw_vertices_; ++i) raw_vertices_[i].n.normalize();
+}
+
+void Ground::spike(vec3f posH) {
+  vec2i pos = posH.xy() / size_ + vec2i(detail_ / 2);
+  pos.x = clamp(pos.x, 0, detail_);
+  pos.y = clamp(pos.y, 0, detail_);
+  raw_vertices_[pos.x + pos.y * (detail_ + 1)].p.z
+    = max(raw_vertices_[pos.x + pos.y * (detail_ + 1)].p.z, posH.z);
 }

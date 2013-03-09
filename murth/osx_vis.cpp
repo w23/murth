@@ -30,13 +30,14 @@ private:
   Camera camera_;
   Ground *ground_;
   Render *render_;
+  float sampleAngle_;
 };
 IViewport *makeViewport() { return new Visuport; }
-Visuport::Visuport() : is_playing_(false), camera_(vec3f(10.f), vec3f(0), vec3f(0,0,1)) {}
+Visuport::Visuport() : is_playing_(false), camera_(vec3f(10.f), vec3f(0), vec3f(0,0,1)), sampleAngle_(0) {}
 void Visuport::init(IViewportController *system) {
   controller_ = system;
   render_ = new Render;
-  ground_ = new Ground();
+  ground_ = new Ground(64, 1.f);
   render_->cullFace().enable();
   render_->depthTest().enable();
   render_->commit();
@@ -52,11 +53,19 @@ void Visuport::draw(int ms, float dt) {
   if (!is_playing_) { audio_play(); is_playing_ = true; }
   
   glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-  float angle = ms * 1e-3f;
-  camera_.lookAt(vec3f(cos(angle), sin(angle), 1) * 10.f, vec3f(0), vec3f(0,0,1));
-  camera_.update();
+  //float angle = ms * 1e-3f;
+  //camera_.lookAt(vec3f(cos(angle), sin(angle), 1) * 10.f, vec3f(0), vec3f(0,0,1));
+  //camera_.update();
   
   //tex[0].upload(Texture::ImageDesc(64, 64, Texture::ImageDesc::Format_R32F), probdata
+  float sas = c_2pi / 4.f;
+  float sad = sas * dt;
+  for (int i = 0; i < 1024; i+=4) {
+    float angle = sampleAngle_ + sad * i / 1024;
+    ground_->spike(vec3f(cos(angle) * 16.f, sin(angle) * 16.f, 4.f * probdata[2][i].f));
+  }
+  sampleAngle_ = fmodf(sampleAngle_ + sad, c_2pi);
+  ground_->update(ms, dt);
   ground_->draw(Render::currentRender(), camera_.getMvp());
   controller_->requestRedraw();
 }
