@@ -7,9 +7,7 @@
 
 OSStatus audio_cb(void *inRefCon, AudioUnitRenderActionFlags *ioActionFlags,
                   const AudioTimeStamp *inTimeStamp, UInt32 inBusNumber,
-                  UInt32 inNumberFrames, AudioBufferList *ioData)
-{
-  
+                  UInt32 inNumberFrames, AudioBufferList *ioData) {
   AudioBuffer* buf = &ioData->mBuffers[0];
   short* ptr = (short*)buf->mData;
   synth(ptr, inNumberFrames);

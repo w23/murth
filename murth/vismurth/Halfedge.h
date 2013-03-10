@@ -1,0 +1,33 @@
+#pragma once
+#include <kapusha/math/types.h>
+using kapusha::vec3f;
+class Halfedge {
+public:
+  Halfedge(int triangles, int subdivisions);
+  ~Halfedge();
+  void setVertices(const vec3f *in_vertices, int count);
+  int addVertex(vec3f vertex);
+  int addHalfEdge(int vertex_begin, int vertex_end);
+  int edgeReversed(int edge);
+  int addTriangle(int edge0, int edge1, int edge2);
+  void calcSubdivision();
+  inline const vec3f *getVertices() const { return vertices_; }
+  inline int getIndicesCount() const { return ntriangles_ * 3; }
+  void writeIndices(int *out_indices) const;
+private:
+  int subdivision_;
+  struct edge_t {
+    int next, reverse, reverse_half;
+    int start, end;
+  };
+  vec3f *vertices_;
+  edge_t *edges_;
+  int *triangles_;
+  int nvertices_, allocated_vertices_;
+  int nedges_, allocated_edges_;
+  int ntriangles_, allocated_triangles_;
+  int edgeSplit(int edge);
+  int edgeAdd(int edge_prev, int edge_next);
+  int triangleAdd(int edge_first);
+  void triangleSubdivide(int triangle);
+};
