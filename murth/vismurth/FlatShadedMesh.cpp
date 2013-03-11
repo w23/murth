@@ -7,8 +7,11 @@ static const char shader_vertex[] =
 "varying vec3 vv3_color;\n"
 "void main() {\n"
 "gl_Position = um4_mvp * vec4(av3_pos, 1.);\n"
+//"vec3 normal = (um4_mvp*vec4(av3_normal,0.)).xyz;\n"
+"vec3 normal = av3_normal;\n"
 "vec3 l1dir = uv3_l1_pos - av3_pos;\n"
-"vv3_color = vec3(.2) + uv3_l1_color * (10. * max(dot(av3_normal,l1dir),0.) / dot(l1dir,l1dir));\n"
+"vv3_color = vec3(.2) + uv3_l1_color * (10. * max(dot(normal,l1dir),0.) / dot(l1dir,l1dir));\n"
+//"vv3_color = vec3(.2) + uv3_l1_color * max(dot(normal,normalize(uv3_l1_pos)), 0.);\n"
 "}\n";
 static const char shader_fragment[] =
 "varying vec3 vv3_color;\n"
@@ -24,7 +27,7 @@ void FlatShadedMesh::init(int nraw_vertices, int ntriangles) {
   raw_indices_ = new int[ntriangles_ * 3];
   Program *p = new Program(shader_vertex, shader_fragment);
   Material *m = new Material(p);
-  m->setUniform("uv3_l1_pos", vec3f(0,0,8.f));
+  m->setUniform("uv3_l1_pos", vec3f(-6.,7.,8.f));
   m->setUniform("uv3_l1_color", vec3f(.8f, .7f, .2f));
   Batch *b = new Batch(m);
   vertices_ = new Buffer();

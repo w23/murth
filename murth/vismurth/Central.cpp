@@ -1,29 +1,19 @@
 #include "Central.h"
-Central::Central(int detail, float r) : detail_(detail), r_(r) {
-  /*init(6 * detail_ * detail_ + 4 * detail_,
-       12 * detail_ * detail_);*/
-}
+#include "Halfedge.h"
 
-void Central::generateMesh() {
-/*  const int stride = detail_ * 3;
-  const float dc = 2.f / detail_;
-  vertex_t *p = raw_vertices_;
-  for (int y = 0; y <= detail_; ++y, p += stride) {
-    float vy = dc * y - 1.f;
-    for (int x = 0; x < detail_; ++x, ++p) {
-      float vx = dc * x - 1.f;
-      p[0].p         = vec3f(  vx, vy,  1.f);
-      p[detail_].p   = vec3f( 1.f, vy,  -vx);
-      p[detail_*2].p = vec3f( -vx, vy, -1.f);
-      p[detail_*3].p = vec3f(-1.f, vy,   vx);
-    }
-  }
-  const int poffset = detail_ * detail_;
-  for (int y = 1; y < detail_; ++y) {
-    float vy = dc * y - 1.f;
-    for (int x = 1; x < detail_; ++x, ++p) {
-      float vx = dc * x - 1.f;
-      p[0].p = vec3f();
-    }
-  }*/
+#define _A (.5)
+#define _B (.8660254f)
+const static vec3f sphereSeed[5] = { vec3f(0, 0, 1),
+  vec3f(1, 0, 0), vec3f(-_A, _B, 0), vec3f(-_A, -_B, 0), vec3f(0, 0, -1) };
+const static int sphereSeedIndices[18] = {
+  1, 2, 0, 2, 3, 0, 3, 1, 0, 4, 2, 1, 4, 3, 2, 4, 1, 3 };
+
+Central::Central(int detail, float r) { generateMesh(detail, r); }
+void Central::generateMesh(int detail, float r) {
+  Halfedge he(sphereSeed, 5, sphereSeedIndices, 18, detail);
+  init(he.getVerticesCount(), he.getTrianglesCount());
+  const vec3f *v = he.getVertices();
+  for (int i = 0; i < he.getVerticesCount(); ++i) raw_vertices_[i].p = v[i].normalized() * r;
+  he.writeIndices(raw_indices_);
+  calcNormalsAndUpload();
 }
