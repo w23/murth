@@ -165,7 +165,7 @@ struct {
   unsigned short sampleft;
 } paramstates[MAX_PARAMS] = { {0, 0.0, 0} };
 
-void synth(short *ptr, int count)
+void murth_synthesize(short *ptr, int count)
 {
   for (int i = 0; i < count; ++i)
   {
