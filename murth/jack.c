@@ -1,12 +1,15 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <jack/jack.h>
+#include <jack/midiport.h>
 #include "synth.h"
 
 static const char *client_name = "murth";
-static const char *output_port_name = "output";
-static jack_port_t *port_output = 0;
+static jack_port_t *audio_output = 0, *midi_input = 0;
 static jack_client_t *client = 0;
+
+//! \fixme
+static unsigned current_note = 0;
 
 #define RUNTIME_ASSERT(condition) \
   if (!(condition)) { \
@@ -15,7 +18,37 @@ static jack_client_t *client = 0;
   }
 
 static int process_callback(jack_nframes_t nframes, void *param) {
-  murth_synthesize(jack_port_get_buffer(port_output, nframes), nframes);
+  void *midi_buf = jack_port_get_buffer(midi_input, nframes);
+  jack_nframes_t nmidi_events = jack_midi_get_event_count(midi_buf);
+  for (int i = 0; i < nmidi_events; ++i) {
+    jack_midi_event_t event;
+    jack_midi_event_get(&event, midi_buf, i);
+
+    for (int j = 0; j < event.size; ++j)
+    {
+      switch (event.buffer[j])
+      {
+        case 0xb3: // control
+          if (event.buffer[j+1] == 0x1d && event.buffer[j+2] == 0x7f)
+            ++current_note;
+          else if (event.buffer[j+1] == 0x27 && event.buffer[j+2] == 0x7f)
+            --current_note;
+          else
+            params[64 + event.buffer[j+1]].f = event.buffer[j+2] / 127.f;
+          current_note &= 63;
+          j += 2;
+          continue;
+        case 0x90: // note down
+          params[current_note].f = event.buffer[j+1] / 127.f;
+          j += 2;
+          continue;
+        //case 0x80: // note up
+        //  continue;
+      }
+      break; //
+    }
+  }
+  murth_synthesize(jack_port_get_buffer(audio_output, nframes), nframes);
   return 0;
 }
 
@@ -28,18 +61,26 @@ void jack_audio_init(int *samplerate) {
   jack_set_process_callback(client, process_callback, 0);
   jack_on_shutdown(client, shutdown_callback, 0);
   *samplerate = jack_get_sample_rate(client);
-  port_output = jack_port_register(client, output_port_name, JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput | JackPortIsTerminal, 0);
-  RUNTIME_ASSERT(port_output != NULL);
+  audio_output = jack_port_register(client, "audio_output", JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput | JackPortIsTerminal, 0);
+  RUNTIME_ASSERT(audio_output != NULL);
+  midi_input = jack_port_register(client, "midi_input", JACK_DEFAULT_MIDI_TYPE, JackPortIsInput, 0);
+  RUNTIME_ASSERT(midi_input != NULL);
 }
 
 void jack_audio_start() {
   RUNTIME_ASSERT(0 == jack_activate(client));
-  // autoconnect
-  const char **phys_out = jack_get_ports(client, NULL, NULL, JackPortIsPhysical | JackPortIsInput);
+  // autoconnect audio
+  const char **phys_out = jack_get_ports(client, NULL, JACK_DEFAULT_AUDIO_TYPE, JackPortIsPhysical | JackPortIsInput);
   RUNTIME_ASSERT(phys_out != NULL);
   for (int i = 0; phys_out[i] != 0; ++i)
-    RUNTIME_ASSERT(0 == jack_connect(client, jack_port_name(port_output), phys_out[i]));
-  jack_free(phys_out);
+    RUNTIME_ASSERT(0 == jack_connect(client, jack_port_name(audio_output), phys_out[i]));
+  // autoconnect audio
+  const char **midi_in = jack_get_ports(client, NULL, JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput);
+  if(midi_in != NULL) {
+    for (int i = 0; midi_in[i] != 0; ++i)
+      fprintf(stderr, "%s -> = %d\n", midi_in[i], jack_connect(client, midi_in[i], jack_port_name(midi_input)));
+    jack_free(midi_in);
+  }
 }
 
 void jack_audio_close() {
