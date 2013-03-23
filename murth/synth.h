@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 //extern int murth_assemble(const char *ptr);
-extern void murth_synthesize(short* ptr, int count);
+extern void murth_synthesize(float* ptr, int count);
 
 enum {
   LDG = 128, STG, LDP, ADD, PHR, SIN, CLAMP, FIU, NDP,

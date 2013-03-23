@@ -165,7 +165,7 @@ struct {
   unsigned short sampleft;
 } paramstates[MAX_PARAMS] = { {0, 0.0, 0} };
 
-void murth_synthesize(short *ptr, int count)
+void murth_synthesize(float *ptr, int count)
 {
   for (int i = 0; i < count; ++i)
   {
@@ -186,6 +186,6 @@ void murth_synthesize(short *ptr, int count)
 
     top = stack + STACK_SIZE;
     run(0);
-    ptr[i] = top->f * 32767.f;
+    ptr[i] = top->f;
   }
 }
