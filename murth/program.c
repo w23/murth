@@ -2,13 +2,13 @@
 
 #define tick 10000
 
-ifu probdata[4][4096];
+/*ifu probdata[4][4096];
 probe probes[4] = {
   {0, 4096, probdata[0]},
   {0, 4096, probdata[1]},
   {0, 4096, probdata[2]},
   {0, 4096, probdata[3]},
-};
+};*/
 
 u8 m0[8] = {17, 17, 15, 15, 12, 12, 10, 10};
 unsigned short dm0[8] = {0, tick-2, 0, tick-2, 0, tick-2, 0, tick-2};

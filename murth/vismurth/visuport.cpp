@@ -1,4 +1,5 @@
-#include "synth.h"
+#include "../synth.h"
+#include "../jack.h"
 #include <kapusha/core/Core.h>
 #include <kapusha/core/IViewport.h>
 #include <kapusha/render/Render.h>
@@ -6,10 +7,6 @@
 #include "Ground.h"
 #include "Central.h"
 using namespace kapusha;
-extern "C" {
-  extern void audio_play();
-  extern void audio_stop();
-}
 ifu probdata[4][4096];
 probe probes[4] = {
   {0, 4096, probdata[0]},
@@ -55,7 +52,7 @@ void Visuport::resize(vec2i s) {
 }
 
 void Visuport::draw(int ms, float dt) {
-  if (!is_playing_) { audio_play(); is_playing_ = true; }
+  if (!is_playing_) { jack_audio_start(); is_playing_ = true; }
   
   glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
   float angle = ms * 1e-3f;
@@ -82,5 +79,4 @@ void Visuport::close()
 {
   delete ground_;
   delete render_;
-  audio_stop();
 }

@@ -7,6 +7,8 @@ extern "C" {
 #endif
 
 //extern int murth_assemble(const char *ptr);
+//! must be called from teh same thread as synthesize
+extern void murth_process_raw_midi(void *packet, int bytes);
 extern void murth_synthesize(float* ptr, int count);
 
 enum {

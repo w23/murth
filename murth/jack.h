@@ -8,5 +8,5 @@ void jack_audio_start();
 void jack_audio_close();
 
 #ifdef __cplusplus
-{ // extern "C"
+} // extern "C"
 #endif
