@@ -56,7 +56,8 @@ static void shutdown_callback(void *param) { exit(0); }
 
 void jack_audio_init(int *samplerate) {
   jack_status_t status;
-  client = jack_client_open(client_name, JackNullOption, &status, NULL);
+  client = jack_client_open(client_name, JackNoStartServer, &status, NULL);
+  fprintf(stderr, "Status: %08x\n", status);
   RUNTIME_ASSERT(client != NULL);
   jack_set_process_callback(client, process_callback, 0);
   jack_on_shutdown(client, shutdown_callback, 0);
