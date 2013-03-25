@@ -1,191 +1,90 @@
 #include <math.h>
 #include "synth.h"
 
+#define CORES 4
 #define STACK_SIZE 128
 #define MAX_GLOBALS 128
-#define MAX_RINGBUFFERS 8
-#define RINGBUFFER_SIZE 65536
-#define RINGBUFFER_SIZEMASK 65535
+#define MAX_PROGRAM_LENGTH 1024
+#define SAMPLERS 4
+#define MAX_SAMPLER_SIZE_BITS 16
+#define MAX_SAMPLER_SIZE (1 << MAX_SAMPLER_SIZE_BITS)
+#define MAX_SAMPLER_SIZE_MASK (MAX_SAMPLER_SIZE - 1)
 
-ifu globals[MAX_GLOBALS]; /* = { {.i = 0} }; */
-ifu params[MAX_PARAMS]; /* = { {.i = 0} }; */
+//static int samplerate = 0;
+static int samples_in_tick; 
 
-struct {
-  unsigned writepos;
-  unsigned readpos;
-  float samples[RINGBUFFER_SIZE];
-} ringbuffers[MAX_RINGBUFFERS]; /* = { {0, 0, {0.0}} }; */
+static unsigned program[MAX_PROGRAM_LENGTH];
 
-typedef void(*instr)(void);
-ifu stack[STACK_SIZE];
-ifu *top;
+typedef struct {
+  float samples[MAX_SAMPLER_SIZE];
+} sampler_t;
 
-void i_ldg() {
-  top->i = globals[top->i].i;
+typedef struct {
+  int samples_to_idle;
+  int pcounter;
+  ifu stack[STACK_SIZE], *top;
+} core_t;
+
+core_t cores[CORES];
+ifu globals[MAX_GLOBALS];
+sampler_t samplers[SAMPLERS];
+
+typedef void(*instr)(core_t *c);
+
+void i_load(core_t *c) { (--c->top)->i = program[++c->pcounter]; }
+void i_idle(core_t *c) { c->samples_to_idle = (++c->top)->i * samples_in_tick; }
+void i_jmp(core_t *c) { c->pcounter = (++c->top)->i; }
+void i_loadglobal(core_t *c) { c->top->i = globals[c->top->i].i; }
+void i_storeglobal(core_t *c) { globals[c->top->i].i = c->top[1].i; ++c->top; }
+void i_dup(core_t *c) { --c->top; c->top->i = c->top[1].i; }
+void i_ndup(core_t *c) { --c->top; c->top->i = c->top[c->top[1].i+1].i; }
+void i_pop(core_t *c) { ++c->top; }
+void i_fsgn(core_t *c) { c->top->f = c->top->f < 0 ? -1.f : 1.f; }
+void i_fadd(core_t *c) { c->top[1].f += c->top[0].f; ++c->top; }
+void i_fmul(core_t *c) { c->top[1].f *= c->top->f, ++c->top; }
+void i_fsin(core_t *c) { c->top->f = sinf(c->top->f * 3.1415926f); }
+void i_fclamp(core_t *c) {
+  if (c->top->f < -1.f) c->top->f = -1.f;
+  if (c->top->f > 1.f) c->top->f = 1.f;
 }
-
-void i_stg() {
-  globals[top->i].i = top[1].i;
-  ++top;
+void i_fphaserot(core_t *c) {
+  c->top->f = fmodf(c->top->f + 1.f, 2.f) - 1.f;
 }
-
-void i_ldp() {
-  top->f = params[top->i].f;
-}
-
-void i_add() {
-  top[1].f += top[0].f;
-  ++top;
-}
-
-void i_sin() {
-  top->f = sinf(top->f * 3.1415926f);
-}
-
-void i_clamp() {
-  if (top->f < -1.f)
-    top->f = -1.f;
-  if (top->f > 1.f)
-    top->f = 1.f;
-}
-
-void i_phrot() {
-  top->f = fmodf(top->f + 1.f, 2.f) - 1.f;
-}
-
-void i_f2iu() {
-  top->i = top->f * 127;
-}
-
-void i_n2dp() {
-  int n = top->i;
+void i_float2unsigned(core_t *c) { c->top->i = c->top->f * 127; }
+void i_inote2fdeltaphase(core_t *c) {
+  int n = c->top->i;
   float kht = 1.059463f; //2^(1/12)
   float f = 55.f / 44100.f;
   while(--n>=0) f *= kht; // cheap pow!
-  top->f = f;
+  c->top->f = f;
 }
+void i_unsigned2float(core_t *c) { c->top->f = c->top->i / 127.f; }
+void i_iadd(core_t *c) { c->top[1].i += c->top->i, ++c->top; }
+void i_imul(core_t *c) { c->top[1].i *= c->top->i; ++c->top; }
 
-void i_i2fu() {
-  top->f = top->i / 127.f;
-}
-
-void i_mul() {
-  top[1].f *= top->f;
-  ++top;
-}
-
-void i_iadd() {
-  top[1].i += top->i;
-  ++top;
-}
-
-void i_dup() {
-  --top;
-  top->i = top[1].i;
-}
-
-void i_ndup() {
-  --top;
-  top->i = top[top[1].i+1].i;
-}
-
-void i_sgn() {
-  top->f = top->f < 0 ? -1.f : 1.f;
-}
-
-void i_rwr() {
-  ringbuffers[top->i].samples[ringbuffers[top->i].writepos] = top[1].f;
-  ++ringbuffers[top->i].writepos;
-  ringbuffers[top->i].writepos &= RINGBUFFER_SIZEMASK;
-  ++top;
-}
-
-void i_rrd() {
-  float v = ringbuffers[top->i].samples[ringbuffers[top->i].readpos];
-//  ++ringbuffers[top->i].readpos;
-//  ringbuffers[top->i].readpos &= RINGBUFFER_SIZEMASK;
-  top->f = v;
-}
-
-void i_rof() {
-  ringbuffers[top->i].readpos = ringbuffers[top->i].writepos - top[1].i;
-  ringbuffers[top->i].readpos &= RINGBUFFER_SIZEMASK;
-  ++top;
-}
-
-void i_pop() {
-  ++top;
-}
-
-void i_imul() {
-  top[1].i *= top->i;
-  ++top;
-}
-
-void i_probe() {
-  probes[top->i].values[probes[top->i].pos] = top[1];
-  probes[top->i].pos = (probes[top->i].pos+1) % probes[top->i].size;
-  ++top;
-}
-
-instr instruction_table[64] = {
-  i_ldg, i_stg, i_ldp, i_add, i_phrot, i_sin, i_clamp, i_f2iu, i_n2dp,
-  i_i2fu, i_mul, i_iadd, i_dup, i_ndup, i_sgn,
-  i_rwr, i_rrd, i_rof, i_pop, i_imul, i_probe
+instr instruction_table[] = {
+  i_load, i_idle, i_jmp, // control
+  i_loadglobal, i_storeglobal, // globals
+  i_dup, i_ndup, i_pop, // basic stack
+  i_fsgn, i_fadd, i_fmul, i_fsin, i_fclamp, i_fphaserot // float ops
 };
 
-//#define L(...) printf(__VA_ARGS__)
-#ifndef L
-#define L(...) {}
-#endif
-
-void run(int offset)
-{
-  for(;; ++offset)
-  {
-    u8 icode = program[offset];
-    L("[%03d] ", icode);
-    if (icode < 128)
-      (--top)->i = icode;
-    else if (icode == LOND)
-    {
-      (--top)->i = (((int)program[offset+1]) << 8) | (int)(program[offset+2]);
-      offset += 2;
-    } else if (icode == RET)
-      return;
-    else
-      instruction_table[icode&127]();
-    L("top %f (%d)\n", top->f, top->i);
+void murth_synthesize(float *ptr, int count) {
+  for (int i = 0; i < count; ++i) {
+    globals[0].i = 0;
+    for (int j = CORES - 1; j >= 0; --j)
+      if (cores[j].pcounter >= 0) {
+        core_t *c = cores + j;
+        while(c->samples_to_idle == 0) instruction_table[program[c->pcounter++]](c);
+        --c->samples_to_idle;
+      }
+    ptr[i] = globals[0].f;
   }
 }
 
-struct {
-  int pos;
-  float dv;
-  unsigned short sampleft;
-} paramstates[MAX_PARAMS] = { {0, 0.0, 0} };
+void murth_process_raw_midi(void *packet, int bytes) {
+}
 
-void murth_synthesize(float *ptr, int count)
-{
-  for (int i = 0; i < count; ++i)
-  {
-    for (int j = 0; j < nparamtbls; ++j)
-    {
-      if (paramstates[j].sampleft == 0)
-      {
-        params[j].f = paramtbls[j].values[paramstates[j].pos] / 127.f;
-        ++paramstates[j].pos;
-        paramstates[j].pos %= paramtbls[j].count;
-        paramstates[j].sampleft = paramtbls[j].dsamples[paramstates[j].pos];
-        paramstates[j].dv = (paramtbls[j].values[paramstates[j].pos] / 127.f - params[j].f) / (float)(paramtbls[j].dsamples[paramstates[j].pos] + 1);
-      } else {
-        params[j].f += paramstates[j].dv;
-        --paramstates[j].sampleft;
-      }
-    }
-
-    top = stack + STACK_SIZE;
-    run(0);
-    ptr[i] = top->f;
-  }
+int murth_assemble(const char *ptr) {
+  return -1;
 }

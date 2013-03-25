@@ -8,9 +8,6 @@ static const char *client_name = "murth";
 static jack_port_t *audio_output = 0, *midi_input = 0;
 static jack_client_t *client = 0;
 
-//! \fixme
-static unsigned current_note = 0;
-
 #define RUNTIME_ASSERT(condition) \
   if (!(condition)) { \
     fprintf(stderr, "%s:%d: assert(%s) failed\n", __FILE__, __LINE__, #condition);\
@@ -23,30 +20,7 @@ static int process_callback(jack_nframes_t nframes, void *param) {
   for (int i = 0; i < nmidi_events; ++i) {
     jack_midi_event_t event;
     jack_midi_event_get(&event, midi_buf, i);
-
-    for (int j = 0; j < event.size; ++j)
-    {
-      switch (event.buffer[j])
-      {
-        case 0xb3: // control
-          if (event.buffer[j+1] == 0x1d && event.buffer[j+2] == 0x7f)
-            ++current_note;
-          else if (event.buffer[j+1] == 0x27 && event.buffer[j+2] == 0x7f)
-            --current_note;
-          else
-            params[64 + event.buffer[j+1]].f = event.buffer[j+2] / 127.f;
-          current_note &= 63;
-          j += 2;
-          continue;
-        case 0x90: // note down
-          params[current_note].f = event.buffer[j+1] / 127.f;
-          j += 2;
-          continue;
-        //case 0x80: // note up
-        //  continue;
-      }
-      break; //
-    }
+    murth_process_raw_midi(midi_buf, event.size);
   }
   murth_synthesize(jack_port_get_buffer(audio_output, nframes), nframes);
   return 0;
@@ -57,7 +31,6 @@ static void shutdown_callback(void *param) { exit(0); }
 void jack_audio_init(int *samplerate) {
   jack_status_t status;
   client = jack_client_open(client_name, JackNoStartServer, &status, NULL);
-  fprintf(stderr, "Status: %08x\n", status);
   RUNTIME_ASSERT(client != NULL);
   jack_set_process_callback(client, process_callback, 0);
   jack_on_shutdown(client, shutdown_callback, 0);
@@ -75,7 +48,7 @@ void jack_audio_start() {
   RUNTIME_ASSERT(phys_out != NULL);
   for (int i = 0; phys_out[i] != 0; ++i)
     RUNTIME_ASSERT(0 == jack_connect(client, jack_port_name(audio_output), phys_out[i]));
-  // autoconnect audio
+  // autoconnect midi
   const char **midi_in = jack_get_ports(client, NULL, JACK_DEFAULT_MIDI_TYPE, JackPortIsOutput);
   if(midi_in != NULL) {
     for (int i = 0; midi_in[i] != 0; ++i)

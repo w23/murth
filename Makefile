@@ -3,7 +3,6 @@ include common.mk
 SOURCES := \
 	murth/jack.c \
 	murth/synth.c \
-	murth/program.c \
 	murth/vismurth/visuport.cpp \
 	murth/vismurth/Ground.cpp \
 	murth/vismurth/Central.cpp \

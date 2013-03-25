@@ -6,7 +6,6 @@
 
 extern kapusha::IViewport *makeViewport();
 int main(int argc, char *argv[]) {
-  for (int i = 0; i < MAX_PARAMS; ++i) params[i].f = .5f; 
   int samplerate;
   jack_audio_init(&samplerate);
   int ret = KPSDL(makeViewport(), 1280, 720);
