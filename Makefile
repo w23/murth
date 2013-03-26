@@ -21,6 +21,9 @@ DEPS=Makefile common.mk
 vismurth: $(DEPS) $(MODULES) 3p/kapusha/libkapusha.a
 	$(LD) $(LDFLAGS) $(MODULES) -L3p/kapusha -lkapusha -o vismurth
 
+test: $(DEPS) murth/synth.o murth/test.o
+	$(LD) $(LDFLAGS) murth/synth.o murth/test.o -o test
+
 3p/kapusha/libkapusha.a:
 	make -j5 -C 3p/kapusha
 

@@ -1,7 +1,7 @@
 CC ?= clang
 CXX ?= clang
 LD ?= clang
-C_FLAGS = -Wall -Werror -fno-exceptions -fno-rtti -I. -I3p/kapusha `pkg-config --cflags jack` -Wno-invalid-offsetof
+C_FLAGS = -g -Wall -Werror -fno-exceptions -fno-rtti -I. -I3p/kapusha `pkg-config --cflags jack` -Wno-invalid-offsetof
 LDFLAGS = -lm `pkg-config --libs jack` -lstdc++
 
 ifeq ($(DEBUG),1)
