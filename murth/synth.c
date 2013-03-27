@@ -41,8 +41,8 @@ static var_t globals[GLOBALS];
 //static sampler_t samplers[SAMPLERS];
 
 void i_load(core_t *c) { (--c->top)->i = program[c->pcounter++]; }
-void i_idle(core_t *c) { c->samples_to_idle = (c->top++)->i * samples_in_tick + 1; }
-void i_jmp(core_t *c) { c->pcounter = (++c->top)->i; }
+void i_idle(core_t *c) { c->samples_to_idle = (c->top++)->i + 1; }
+void i_jmp(core_t *c) { c->pcounter = (c->top++)->i; }
 void i_ret(core_t *c) { c->pcounter = -1; }
 void i_loadglobal(core_t *c) { c->top->i = globals[c->top->i].i; }
 void i_storeglobal(core_t *c) { globals[c->top->i].i = c->top[1].i; ++c->top; }
@@ -51,6 +51,7 @@ void i_ndup(core_t *c) { --c->top; c->top->i = c->top[c->top[1].i+1].i; }
 void i_pop(core_t *c) { ++c->top; }
 void i_fsgn(core_t *c) { c->top->f = c->top->f < 0 ? -1.f : 1.f; }
 void i_fadd(core_t *c) { c->top[1].f += c->top[0].f; ++c->top; }
+void i_fsub(core_t *c) { c->top[1].f -= c->top[0].f; ++c->top; }
 void i_fmul(core_t *c) { c->top[1].f *= c->top->f, ++c->top; }
 void i_fsin(core_t *c) { c->top->f = sinf(c->top->f * 3.1415926f); }
 void i_fclamp(core_t *c) {
@@ -71,6 +72,20 @@ void i_inote2fdeltaphase(core_t *c) {
 void i_unsigned2float(core_t *c) { c->top->f = c->top->i / 127.f; }
 void i_iadd(core_t *c) { c->top[1].i += c->top->i, ++c->top; }
 void i_imul(core_t *c) { c->top[1].i *= c->top->i; ++c->top; }
+void i_spawn(core_t *c) {
+  const int args = c->top[1].i;
+  for (int i = 0; i < CORES; ++i)
+    if (cores[i].pcounter < 0) {
+      core_t *nc = cores + i;
+      nc->samples_to_idle = 0;
+      nc->pcounter = c->top[0].i;
+      nc->top = nc->stack + STACK_SIZE - args;
+      memcpy(nc->top, c->top + 2, sizeof(var_t) * args);
+      break;
+    }
+  c->top += 2 + args;
+}
+void i_ticks(core_t *c) { c->top->i *= samples_in_tick; }
 
 typedef struct {
   const char *name;
@@ -78,10 +93,10 @@ typedef struct {
 } instruction_t;
 instruction_t instructions[] = {
 #define I(name) {#name, i_##name}
-  I(load), I(idle), I(jmp), I(ret),
-  I(loadglobal), I(storeglobal),
+  I(load), I(idle), I(jmp), I(ret), I(spawn),
+  I(loadglobal), I(storeglobal), I(ticks),
   I(dup), I(ndup), I(pop),
-  I(fsgn), I(fadd), I(fmul), I(fsin), I(fclamp), I(fphaserot),
+  I(fsgn), I(fadd), I(fsub), I(fmul), I(fsin), I(fclamp), I(fphaserot),
   I(inote2fdeltaphase)
 };
 
@@ -130,6 +145,8 @@ typedef struct {
 name_t global_names[GLOBALS-1];
 name_t sampler_names[SAMPLERS];
 label_t label_names[GLOBALS];
+#define MAX_FORWARDS (GLOBALS*4)
+label_t label_forwards[MAX_FORWARDS];
 
 int get_name(const char *name, name_t *names, int max)
 {
@@ -162,12 +179,22 @@ int get_sampler(const char *name) {
   return ret;
 }
 
-int get_label(const char *name) {
-  for (int i = 0; i < MAX_LABELS; ++i) {
+int get_label_address(const char *name, int for_position) {
+  for (int i = 0; i < MAX_LABELS; ++i)
     if (strncmp(name, label_names[i].name, MAX_NAME_LENGTH) == 0)
-      return i;
+      return label_names[i].position;
+  if (for_position == -1) {
+      fprintf(stderr, "forwarded label '%s' not found\n", name);
+      abort();
+      return -1;
   }
-  fprintf(stderr, "label '%s' not found\n", name);
+  for (int i = 0; i < MAX_FORWARDS; ++i)
+    if (label_forwards[i].name[0] == 0) {
+      strcpy(label_forwards[i].name, name);
+      label_forwards[i].position = for_position;
+      return for_position;
+    }
+  fprintf(stderr, "label '%s' forward @ %d -- too many forwards\n", name, for_position);
   abort();
   return -1;
 }
@@ -207,6 +234,7 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
   memset(global_names, 0, sizeof(global_names));
   memset(sampler_names, 0, sizeof(sampler_names));
   memset(label_names, 0, sizeof(label_names));
+  memset(label_forwards, 0, sizeof(label_forwards));
   int program_counter = 0;
   const char *tok = assembly, *tokend;
   for(;*tok != 0;) {
@@ -215,7 +243,7 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
     int typehint = 0;
 #define ALPHA 1
 #define DIGIT 2
-#define DOT 3
+#define DOT 4
     for (;*tokend != 0;) {
       if (isspace(*tokend) || *tokend == ';') break;
       if (isalpha(*tokend)) typehint |= ALPHA;
@@ -231,6 +259,8 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
     }
 
     const int len = tokend - tok;
+    if (len == 0) break;
+
     char token[MAX_NAME_LENGTH];
     if (len >= MAX_NAME_LENGTH)
     {
@@ -247,6 +277,8 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
       return -1;
     }
 
+    L("'%s': %02x\n", token, typehint);
+
     if (token[0] == '$') { // global var reference
       program[program_counter++] = InstrLoad;
       program[program_counter++] = get_global(token);
@@ -258,7 +290,8 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
       set_label(token, program_counter);
     } else if (token[0] == ':') { // label reference
       program[program_counter++] = InstrLoad;
-      program[program_counter++] = get_label(token+1);
+      int label_position = program_counter;
+      program[program_counter++] = get_label_address(token+1, label_position);
     } else if ((typehint&ALPHA) != 0) { // some kind of string reference
       program[program_counter++] = get_instruction(token);
     } else if ((typehint&(DIGIT|DOT)) == (DIGIT|DOT)) { // float constant (no alpha, but digits with a dot)
@@ -275,6 +308,11 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
     }
     tok = tokend;
   }
+
+  //! patch forwarded labels
+  for (int i = 0; i < MAX_FORWARDS; ++i)
+    if (label_forwards[i].name[0] != 0)
+      program[label_forwards[i].position] = get_label_address(label_forwards[i].name, -1);
 
   for (int i = 1; i < CORES; ++i)
     cores[i].pcounter = -1;
