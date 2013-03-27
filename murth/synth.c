@@ -5,11 +5,11 @@
 #include <math.h>
 #include "synth.h"
 
-#define CORES 16
-#define STACK_SIZE 128
-#define GLOBALS 128
-#define MAX_LABELS 128
-#define MAX_PROGRAM_LENGTH 1024
+#define CORES 4
+#define STACK_SIZE 16
+#define GLOBALS 16
+#define MAX_LABELS 16
+#define MAX_PROGRAM_LENGTH 256
 #define MAX_NAME_LENGTH 32
 #define SAMPLERS 4
 #define MAX_SAMPLER_SIZE_BITS 16
@@ -40,8 +40,8 @@ static core_t cores[CORES];
 static var_t globals[GLOBALS];
 //static sampler_t samplers[SAMPLERS];
 
-void i_load(core_t *c) { (--c->top)->i = program[++c->pcounter]; }
-void i_idle(core_t *c) { c->samples_to_idle = (++c->top)->i * samples_in_tick + 1; }
+void i_load(core_t *c) { (--c->top)->i = program[c->pcounter++]; }
+void i_idle(core_t *c) { c->samples_to_idle = (c->top++)->i * samples_in_tick + 1; }
 void i_jmp(core_t *c) { c->pcounter = (++c->top)->i; }
 void i_ret(core_t *c) { c->pcounter = -1; }
 void i_loadglobal(core_t *c) { c->top->i = globals[c->top->i].i; }
@@ -72,13 +72,6 @@ void i_unsigned2float(core_t *c) { c->top->f = c->top->i / 127.f; }
 void i_iadd(core_t *c) { c->top[1].i += c->top->i, ++c->top; }
 void i_imul(core_t *c) { c->top[1].i *= c->top->i; ++c->top; }
 
-/*instr instruction_table[] = {
-  i_load, i_idle, i_jmp, i_ret, // control
-  i_loadglobal, i_storeglobal, // globals
-  i_dup, i_ndup, i_pop, // basic stack
-  i_fsgn, i_fadd, i_fmul, i_fsin, i_fclamp, i_fphaserot // float ops
-};*/
-
 typedef struct {
   const char *name;
   instr_func_t func;
@@ -92,13 +85,32 @@ instruction_t instructions[] = {
   I(inote2fdeltaphase)
 };
 
+#if DEBUG
+#define L(...) fprintf(stderr, __VA_ARGS__);
+void coredump(core_t *c) {
+  L("%d %08x s=%d[ ", c->samples_to_idle, c->pcounter, (int)(c->stack + STACK_SIZE - c->top));
+  for(var_t *p = c->stack + STACK_SIZE - 1; p >= c->top; --p)
+    L("%f(%d) ", p->f, p->i);
+  L("]\n");
+}
+#define COREDUMP(c) coredump(c)
+#else
+#define COREDUMP(c)
+#define L(...)
+#endif
+
 void murth_synthesize(float *ptr, int count) {
   for (int i = 0; i < count; ++i) {
     globals[0].i = 0;
     for (int j = CORES - 1; j >= 0; --j)
       if (cores[j].pcounter >= 0) {
+        L("core %d:\n", j);
         core_t *c = cores + j;
-        while(c->samples_to_idle == 0) instructions[program[c->pcounter++]].func(c);
+        while(c->samples_to_idle <= 0) {
+          COREDUMP(c);
+          instructions[program[c->pcounter++]].func(c);
+        }
+        COREDUMP(c);
         --c->samples_to_idle;
       }
     ptr[i] = globals[0].f;
@@ -268,7 +280,7 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
     cores[i].pcounter = -1;
   cores[0].samples_to_idle = 0;
   cores[0].pcounter = 0;
-  cores[0].top = cores[0].stack + STACK_SIZE;
+  cores[0].top = cores[0].stack + STACK_SIZE - 1;
 
   for (int i = 0; i < program_counter; ++i) {
     var_t v; v.i = program[i];
