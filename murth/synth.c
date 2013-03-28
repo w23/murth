@@ -46,10 +46,12 @@ void i_ret(core_t *c) { c->pcounter = -1, c->samples_to_idle = 1; }
 void i_loadglobal(core_t *c) { c->top->i = globals[c->top->i].i; }
 void i_storeglobal(core_t *c) { globals[c->top->i].i = c->top[1].i; ++c->top; }
 void i_dup(core_t *c) { --c->top; c->top->i = c->top[1].i; }
-void i_ndup(core_t *c) { --c->top; c->top->i = c->top[c->top[1].i+1].i; }
+void i_get(core_t *c) { *c->top = c->top[c->top->i]; }
+void i_put(core_t *c) { c->top[c->top->i] = *++c->top; }
 void i_pop(core_t *c) { ++c->top; }
 void i_fsgn(core_t *c) { c->top->f = c->top->f < 0 ? -1.f : 1.f; }
 void i_fadd(core_t *c) { c->top[1].f += c->top[0].f; ++c->top; }
+void i_faddnp(core_t *c) { c->top[0].f += c->top[1].f; }
 void i_fsub(core_t *c) { c->top[1].f -= c->top[0].f; ++c->top; }
 void i_fmul(core_t *c) { c->top[1].f *= c->top->f, ++c->top; }
 void i_fsin(core_t *c) { c->top->f = sinf(c->top->f * 3.1415926f); }
@@ -100,8 +102,8 @@ instruction_t instructions[] = {
 #define I(name) {#name, i_##name}
   I(load), I(idle), I(jmp), I(ret), I(spawn),
   I(loadglobal), I(storeglobal), I(ticks),
-  I(dup), I(ndup), I(pop),
-  I(fsgn), I(fadd), I(fsub), I(fmul), I(fsin), I(fclamp), I(fphaserot), I(noise),
+  I(dup), I(get), I(put), I(pop),
+  I(fsgn), I(fadd), I(faddnp), I(fsub), I(fmul), I(fsin), I(fclamp), I(fphaserot), I(noise),
   I(inote2fdeltaphase)
 };
 
