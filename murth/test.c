@@ -5,7 +5,7 @@ const char *assembly =
 "54 inote2fdeltaphase $delta storeglobal pop\n" // initial delta_phase
 "00 :phasemod spawn\n" // spawn phasemod "thread"
 "forever:\n" // main synthloop
-  "$phase loadglobal $delta loadglobal fadd fphaserot $phase storeglobal fsin 00 storeglobal pop\n"
+  "$phase loadglobal $delta loadglobal fadd fphaserot $phase storeglobal fsin noise 0.5 fmul fadd 00 storeglobal pop\n"
   "00 idle :forever jmp\n"
 "phasemod:\n" // second "thread"
   "$delta loadglobal 0.997 fmul $delta storeglobal pop\n"

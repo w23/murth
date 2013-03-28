@@ -86,6 +86,12 @@ void i_spawn(core_t *c) {
   c->top += 2 + args;
 }
 void i_ticks(core_t *c) { c->top->i *= samples_in_tick; }
+void i_noise(core_t *c) {
+  static int seed = 127;
+  seed *= 16807;
+  (--c->top)->i = ((unsigned)seed >> 9) | 0x3f800000u;
+  c->top[0].f -= 1.0f;
+}
 
 typedef struct {
   const char *name;
@@ -96,7 +102,7 @@ instruction_t instructions[] = {
   I(load), I(idle), I(jmp), I(ret), I(spawn),
   I(loadglobal), I(storeglobal), I(ticks),
   I(dup), I(ndup), I(pop),
-  I(fsgn), I(fadd), I(fsub), I(fmul), I(fsin), I(fclamp), I(fphaserot),
+  I(fsgn), I(fadd), I(fsub), I(fmul), I(fsin), I(fclamp), I(fphaserot), I(noise),
   I(inote2fdeltaphase)
 };
 
