@@ -10,7 +10,6 @@
 #define GLOBALS 16
 #define MAX_LABELS 16
 #define MAX_PROGRAM_LENGTH 256
-#define MAX_NAME_LENGTH 32
 #define SAMPLERS 4
 #define MAX_SAMPLER_SIZE_BITS 16
 #define MAX_SAMPLER_SIZE (1 << MAX_SAMPLER_SIZE_BITS)
@@ -43,7 +42,7 @@ static var_t globals[GLOBALS];
 void i_load(core_t *c) { (--c->top)->i = program[c->pcounter++]; }
 void i_idle(core_t *c) { c->samples_to_idle = (c->top++)->i + 1; }
 void i_jmp(core_t *c) { c->pcounter = (c->top++)->i; }
-void i_ret(core_t *c) { c->pcounter = -1; }
+void i_ret(core_t *c) { c->pcounter = -1, c->samples_to_idle = 1; }
 void i_loadglobal(core_t *c) { c->top->i = globals[c->top->i].i; }
 void i_storeglobal(core_t *c) { globals[c->top->i].i = c->top[1].i; ++c->top; }
 void i_dup(core_t *c) { --c->top; c->top->i = c->top[1].i; }
@@ -120,27 +119,30 @@ void coredump(core_t *c) {
 #define L(...)
 #endif
 
+inline static void run_core(core_t *c) {
+  if (c->pcounter >= 0) {
+    L("core %p:\n", c);
+    while(c->samples_to_idle <= 0) {
+      COREDUMP(c);
+      c->samples_to_idle = 0;
+      instructions[program[c->pcounter++]].func(c);
+    }
+    COREDUMP(c);
+    --c->samples_to_idle;
+  }
+}
+
 void murth_synthesize(float *ptr, int count) {
   for (int i = 0; i < count; ++i) {
     globals[0].i = 0;
-    for (int j = CORES - 1; j >= 0; --j)
-      if (cores[j].pcounter >= 0) {
-        L("core %d:\n", j);
-        core_t *c = cores + j;
-        while(c->samples_to_idle <= 0) {
-          COREDUMP(c);
-          instructions[program[c->pcounter++]].func(c);
-        }
-        COREDUMP(c);
-        --c->samples_to_idle;
-      }
+    for (int j = CORES - 1; j >= 0; --j) run_core(cores + j);
     ptr[i] = globals[0].f;
   }
 }
 
-void murth_process_raw_midi(void *packet, int bytes) {
-}
-
+#define MAX_NAME_LENGTH 32
+#define MAX_HANDLERS 16
+#define MAX_FORWARDS (GLOBALS*4)
 typedef struct {
   char name[MAX_NAME_LENGTH];
 } name_t;
@@ -148,13 +150,25 @@ typedef struct {
   char name[MAX_NAME_LENGTH];
   int position;
 } label_t;
-name_t global_names[GLOBALS-1];
-name_t sampler_names[SAMPLERS];
-label_t label_names[GLOBALS];
-#define MAX_FORWARDS (GLOBALS*4)
-label_t label_forwards[MAX_FORWARDS];
+typedef struct {
+  int channel, note;
+  int address;
+} midi_note_handler_t;
+typedef struct {
+  int channel, control, value;
+  int address;
+} midi_control_handler_t;
+static name_t global_names[GLOBALS-1];
+static name_t sampler_names[SAMPLERS];
+static label_t label_names[GLOBALS];
+static label_t label_forwards[MAX_FORWARDS];
+static midi_note_handler_t note_handlers[MAX_HANDLERS];
+static midi_control_handler_t control_handlers[MAX_HANDLERS];
+static int note_handlers_count;
+static int control_handlers_count;
 
-int get_name(const char *name, name_t *names, int max)
+
+static int get_name(const char *name, name_t *names, int max)
 {
   for (int i = 0; i < max; ++i) {
     if (strncmp(name, names[i].name, MAX_NAME_LENGTH) == 0)
@@ -167,7 +181,7 @@ int get_name(const char *name, name_t *names, int max)
   return -1;
 }
 
-int get_global(const char *name) {
+static int get_global(const char *name) {
   int ret = get_name(name, global_names, GLOBALS - 1) + 1; // 0 is output
   if (ret == -1) {
     fprintf(stderr, "cannot allocate slot for global var '%s' -- too many globals\n", name);
@@ -176,7 +190,7 @@ int get_global(const char *name) {
   return ret;
 }
 
-int get_sampler(const char *name) {
+static int get_sampler(const char *name) {
   int ret = get_name(name, sampler_names, SAMPLERS);
   if (ret == -1) {
     fprintf(stderr, "cannot allocate slot for sampler '%s' -- too many samplers\n", name);
@@ -185,7 +199,7 @@ int get_sampler(const char *name) {
   return ret;
 }
 
-int get_label_address(const char *name, int for_position) {
+static int get_label_address(const char *name, int for_position) {
   for (int i = 0; i < MAX_LABELS; ++i)
     if (strncmp(name, label_names[i].name, MAX_NAME_LENGTH) == 0)
       return label_names[i].position;
@@ -205,7 +219,7 @@ int get_label_address(const char *name, int for_position) {
   return -1;
 }
 
-int set_label(const char *name, int position) {
+static int set_label(const char *name, int position) {
   for (int i = 0; i < MAX_LABELS; ++i) {
     if (strncmp(name, label_names[i].name, MAX_NAME_LENGTH) == 0) {
       fprintf(stderr, "label '%s' already exists\n", name);
@@ -221,7 +235,7 @@ int set_label(const char *name, int position) {
   return -1;
 }
 
-int get_instruction(const char *name) {
+static int get_instruction(const char *name) {
   for (int i = 0; i < sizeof(instructions)/sizeof(*instructions); ++i)
     if (strcmp(name, instructions[i].name) == 0)
       return i;
@@ -236,11 +250,14 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
   samples_in_tick = (samplerate * 60) / (16 * bpm);
 
   // assemble
-  const int InstrLoad = 0;
+  // prepare
   memset(global_names, 0, sizeof(global_names));
   memset(sampler_names, 0, sizeof(sampler_names));
   memset(label_names, 0, sizeof(label_names));
   memset(label_forwards, 0, sizeof(label_forwards));
+  note_handlers_count = control_handlers_count = 0;
+
+  const int InstrLoad = get_instruction("load");
   int program_counter = 0;
   const char *tok = assembly, *tokend;
   for(;*tok != 0;) {
@@ -315,7 +332,7 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
     tok = tokend;
   }
 
-  //! patch forwarded labels
+  // patch forwarded labels
   for (int i = 0; i < MAX_FORWARDS; ++i)
     if (label_forwards[i].name[0] != 0)
       program[label_forwards[i].position] = get_label_address(label_forwards[i].name, -1);
@@ -336,3 +353,72 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
 
   return 0;
 }
+
+int murth_set_midi_control_handler(const char *label, int channel, int control, int value) {
+  if (control_handlers_count == MAX_HANDLERS) {
+    fprintf(stderr, "Too many MIDI control handlers\n");
+    return -1;
+  }
+  midi_control_handler_t *h = control_handlers + control_handlers_count;
+  h->address = get_label_address(label, -1);
+  if (h->address == -1) {
+    fprintf(stderr, "label '%s' required for control handler not found\n", label);
+    return -1;
+  }
+  h->channel = channel; h->control = control; h->value = value;
+  return control_handlers_count++;
+}
+
+int murth_set_midi_note_handler(const char *label, int channel, int note) {
+  if (note_handlers_count == MAX_HANDLERS) {
+    fprintf(stderr, "Too many MIDI control handlers\n");
+    return -1;
+  }
+  midi_note_handler_t *h = note_handlers + note_handlers_count;
+  h->address = get_label_address(label, -1);
+  if (h->address == -1) {
+    fprintf(stderr, "label '%s' required for note handler not found\n", label);
+    return -1;
+  }
+  h->channel = channel; h->note = note;
+  return note_handlers_count++;
+}
+
+static void run_note(int channel, int note, int velocity) {
+  for (int i = 0; i < note_handlers_count; ++i)
+    if (note_handlers[i].address >= 0 &&
+      (note_handlers[i].channel == -1 || note_handlers[i].channel == channel) &&
+      (note_handlers[i].note == -1 || note_handlers[i].note == note)) {
+      core_t c;
+      c.samples_to_idle = 0;
+      c.pcounter = note_handlers[i].address;
+      c.top = c.stack + STACK_SIZE - 4;
+      c.top[0].i = note, c.top[1].i = velocity, c.top[2].i = channel;
+      run_core(&c);
+    }
+}
+
+static void run_control(int channel, int control, int value) {
+  for (int i = 0; i < control_handlers_count; ++i)
+    if (control_handlers[i].address >= 0 &&
+      (control_handlers[i].channel == -1 || control_handlers[i].channel == channel) &&
+      (control_handlers[i].control == -1 || control_handlers[i].control == control) &&
+      (control_handlers[i].value == -1 || control_handlers[i].value == value)) {
+      core_t c;
+      c.samples_to_idle = 0;
+      c.pcounter = control_handlers[i].address;
+      c.top = c.stack + STACK_SIZE - 4;
+      c.top[0].i = value, c.top[1].i = control, c.top[2].i = channel;
+      run_core(&c);
+    }
+}
+
+void murth_process_raw_midi(void *packet, int bytes) {
+  const u8 *p = (u8*)packet;
+  for (int i = 0; i < bytes; ++i)
+    switch(p[i] & 0xf0) {
+      case 0x90: run_note(p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // note on
+      case 0xb0: run_control(p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // control change
+    }
+}
+

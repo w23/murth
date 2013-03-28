@@ -20,7 +20,7 @@ static int process_callback(jack_nframes_t nframes, void *param) {
   for (int i = 0; i < nmidi_events; ++i) {
     jack_midi_event_t event;
     jack_midi_event_get(&event, midi_buf, i);
-    murth_process_raw_midi(midi_buf, event.size);
+    murth_process_raw_midi(event.buffer, event.size);
   }
   murth_synthesize(jack_port_get_buffer(audio_output, nframes), nframes);
   return 0;

@@ -9,15 +9,23 @@ const char *assembly =
   "00 idle :forever jmp\n"
 "phasemod:\n" // second "thread"
   "$delta loadglobal 0.997 fmul $delta storeglobal pop\n"
-  "04 idle :phasemod jmp\n";
+  "04 idle :phasemod jmp\n"
+"note:\n" // note handler
+  "inote2fdeltaphase $delta storeglobal ret"
+;
 
 #define SAMPLES 8192
 float samples[SAMPLES];
 
+unsigned char midi[3] = { 0x90, 27, 127 };
+
 int main(int argc, char *argv[])
 {
   murth_init(assembly, 44100, 90);
-  murth_synthesize(samples, SAMPLES);
+  murth_set_midi_note_handler("note", -1, -1);
+  murth_synthesize(samples, SAMPLES/2);
+  murth_process_raw_midi(midi, 3);
+  murth_synthesize(samples + SAMPLES/2, SAMPLES/2);
 
   FILE *f = fopen("synth.data", "w");
   for (int i = 0; i < SAMPLES; ++i)
