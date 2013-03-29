@@ -9,7 +9,7 @@ midinote: ; reaction to midi note on
 
 noteosc:  ; note oscillator
           ; [dp p]
-  08          ; [dp p T]
+  16          ; [dp p T]
   imulticks   ; [dp p T=T*tick_samples]
   dup         ; [dp p T T]
   storettl    ; [dp p T]
@@ -21,10 +21,15 @@ noteoscloop:
   faddnp  ; [da a dp p=p+dp]
   fphase
   dup     ; [da a dp p p]
-  fsin    ; [da a dp p sin(p)]
-  ;0.2 fmul
+  ;fsin    ; [da a dp p sin(p)]
+  ;dup fmul dup fmul dup fmul
+  ;dup fsign swap fsin fadd
+  ;fsign
+  abs 2.5 fmul 1.0 fsub fclamp
+  0.5 fmul
   04 get fmul
   load0 loadglobal fadd
+  fclamp
   load0 storeglobal pop
   swap2 
   faddnp

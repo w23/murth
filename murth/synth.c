@@ -5,7 +5,7 @@
 #include <math.h>
 #include "synth.h"
 
-#define CORES 4
+#define CORES 8
 #define STACK_SIZE 16
 #define GLOBALS 16
 #define MAX_LABELS 16
@@ -80,7 +80,7 @@ void i_swap2(core_t *c) {
   var_t v = c->top[0]; c->top[0] = c->top[2]; c->top[2] = v;
   v = c->top[1]; c->top[1] = c->top[3]; c->top[3] = v;
 }
-void i_fsgn(core_t *c) { c->top->f = c->top->f < 0 ? -1.f : 1.f; }
+void i_fsign(core_t *c) { c->top->f = c->top->f < 0 ? -1.f : 1.f; }
 void i_fadd(core_t *c) { c->top[1].f += c->top[0].f; ++c->top; }
 void i_faddnp(core_t *c) { c->top[0].f += c->top[1].f; }
 void i_fsub(core_t *c) { c->top[1].f -= c->top[0].f; ++c->top; }
@@ -116,6 +116,7 @@ void i_noise(core_t *c) {
   (--c->top)->i = ((unsigned)seed >> 9) | 0x3f800000u;
   c->top[0].f -= 1.0f;
 }
+void i_abs(core_t *c) { c->top->i &= 0x7fffffff; }
 
 typedef struct {
   const char *name;
@@ -126,8 +127,8 @@ instruction_t instructions[] = {
   I(load), I(load0), I(load1), I(fload1), I(idle), I(jmp), I(jmpnz), I(yield), I(ret), I(spawn), I(storettl),
   I(loadglobal), I(storeglobal), I(imulticks),
   I(dup), I(get), I(put), I(pop), I(swap), I(swap2),
-  I(fsgn), I(fadd), I(faddnp), I(fsub), I(fmul), I(fdiv), I(fsin), I(fclamp), I(fphase), I(noise),
-  I(in2dp),
+  I(fsign), I(fadd), I(faddnp), I(fsub), I(fmul), I(fdiv), I(fsin), I(fclamp), I(fphase), I(noise),
+  I(in2dp), I(abs),
   I(int), I(int127), I(float127), I(float), I(iadd), I(iinc), I(idec), I(imul)
 };
 
