@@ -1,0 +1,33 @@
+ret ; no default processing here
+
+midinote: ; reaction to midi note on
+        ; [channel velocity note]
+  in2dp ; [c v dp]
+  load0 ; [c v dp p]
+  02 :noteosc spawn ; spawn new core with [dp p] stack
+  ret
+
+noteosc:  ; note oscillator
+          ; [dp p]
+  08          ; [dp p T]
+  imulticks   ; [dp p T=T*tick_samples]
+  dup         ; [dp p T T]
+  storettl    ; [dp p T]
+  -1.0 swap    ; [dp p -1.0 T]
+  float fdiv  ; [dp p da=-1.0/T]
+  fload1      ; [dp p da a=1.0]
+  swap2       ; [da a dp p]
+noteoscloop:
+  faddnp  ; [da a dp p=p+dp]
+  fphase
+  dup     ; [da a dp p p]
+  fsin    ; [da a dp p sin(p)]
+  ;0.2 fmul
+  04 get fmul
+  load0 loadglobal fadd
+  load0 storeglobal pop
+  swap2 
+  faddnp
+  swap2
+  yield
+  :noteoscloop jmp

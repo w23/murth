@@ -27,6 +27,7 @@ typedef struct {
 } sampler_t;
 typedef struct {
   int samples_to_idle;
+  int ttl;
   int pcounter;
   var_t stack[STACK_SIZE], *top;
 } core_t;
@@ -40,45 +41,26 @@ static var_t globals[GLOBALS];
 //static sampler_t samplers[SAMPLERS];
 
 void i_load(core_t *c) { (--c->top)->i = program[c->pcounter++]; }
+void i_load0(core_t *c) { (--c->top)->i = 0; }
+void i_load1(core_t *c) { (--c->top)->i = 1; }
+void i_fload1(core_t *c) { (--c->top)->f = 1.f; }
 void i_idle(core_t *c) { c->samples_to_idle = (c->top++)->i + 1; }
 void i_jmp(core_t *c) { c->pcounter = (c->top++)->i; }
+void i_jmpnz(core_t *c) {
+  if (c->top[1].i != 0) {
+    c->pcounter = c->top[0].i;
+  }
+  c->top += 2;
+}
+void i_yield(core_t *c) { c->samples_to_idle = 1; }
 void i_ret(core_t *c) { c->pcounter = -1, c->samples_to_idle = 1; }
-void i_loadglobal(core_t *c) { c->top->i = globals[c->top->i].i; }
-void i_storeglobal(core_t *c) { globals[c->top->i].i = c->top[1].i; ++c->top; }
-void i_dup(core_t *c) { --c->top; c->top->i = c->top[1].i; }
-void i_get(core_t *c) { *c->top = c->top[c->top->i]; }
-void i_put(core_t *c) { c->top[c->top->i] = *++c->top; }
-void i_pop(core_t *c) { ++c->top; }
-void i_fsgn(core_t *c) { c->top->f = c->top->f < 0 ? -1.f : 1.f; }
-void i_fadd(core_t *c) { c->top[1].f += c->top[0].f; ++c->top; }
-void i_faddnp(core_t *c) { c->top[0].f += c->top[1].f; }
-void i_fsub(core_t *c) { c->top[1].f -= c->top[0].f; ++c->top; }
-void i_fmul(core_t *c) { c->top[1].f *= c->top->f, ++c->top; }
-void i_fsin(core_t *c) { c->top->f = sinf(c->top->f * 3.1415926f); }
-void i_fclamp(core_t *c) {
-  if (c->top->f < -1.f) c->top->f = -1.f;
-  if (c->top->f > 1.f) c->top->f = 1.f;
-}
-void i_fphaserot(core_t *c) {
-  c->top->f = fmodf(c->top->f + 1.f, 2.f) - 1.f;
-}
-void i_float2unsigned(core_t *c) { c->top->i = c->top->f * 127; }
-void i_inote2fdeltaphase(core_t *c) {
-  int n = c->top->i;
-  float kht = 1.059463f; //2^(1/12)
-  float f = 55.f / 44100.f;
-  while(--n>=0) f *= kht; // cheap pow!
-  c->top->f = f;
-}
-void i_unsigned2float(core_t *c) { c->top->f = c->top->i / 127.f; }
-void i_iadd(core_t *c) { c->top[1].i += c->top->i, ++c->top; }
-void i_imul(core_t *c) { c->top[1].i *= c->top->i; ++c->top; }
 void i_spawn(core_t *c) {
   const int args = c->top[1].i;
   for (int i = 0; i < CORES; ++i)
     if (cores[i].pcounter < 0) {
       core_t *nc = cores + i;
       nc->samples_to_idle = 0;
+      nc->ttl = 1;
       nc->pcounter = c->top[0].i;
       nc->top = nc->stack + STACK_SIZE - args;
       memcpy(nc->top, c->top + 2, sizeof(var_t) * args);
@@ -86,7 +68,48 @@ void i_spawn(core_t *c) {
     }
   c->top += 2 + args;
 }
-void i_ticks(core_t *c) { c->top->i *= samples_in_tick; }
+void i_storettl(core_t *c) { c->ttl = c->top[0].i, ++c->top; }
+void i_loadglobal(core_t *c) { c->top->i = globals[c->top->i].i; }
+void i_storeglobal(core_t *c) { globals[c->top->i].i = c->top[1].i; ++c->top; }
+void i_dup(core_t *c) { --c->top; c->top->i = c->top[1].i; }
+void i_get(core_t *c) { *c->top = c->top[c->top->i]; }
+void i_put(core_t *c) { c->top[c->top->i] = c->top[1]; ++c->top; }
+void i_pop(core_t *c) { ++c->top; }
+void i_swap(core_t *c) { var_t v = c->top[0]; c->top[0] = c->top[1]; c->top[1] = v; }
+void i_swap2(core_t *c) {
+  var_t v = c->top[0]; c->top[0] = c->top[2]; c->top[2] = v;
+  v = c->top[1]; c->top[1] = c->top[3]; c->top[3] = v;
+}
+void i_fsgn(core_t *c) { c->top->f = c->top->f < 0 ? -1.f : 1.f; }
+void i_fadd(core_t *c) { c->top[1].f += c->top[0].f; ++c->top; }
+void i_faddnp(core_t *c) { c->top[0].f += c->top[1].f; }
+void i_fsub(core_t *c) { c->top[1].f -= c->top[0].f; ++c->top; }
+void i_fmul(core_t *c) { c->top[1].f *= c->top->f, ++c->top; }
+void i_fdiv(core_t *c) { c->top[1].f /= c->top->f, ++c->top; }
+void i_fsin(core_t *c) { c->top->f = sinf(c->top->f * 3.1415926f); }
+void i_fclamp(core_t *c) {
+  if (c->top->f < -1.f) c->top->f = -1.f;
+  if (c->top->f > 1.f) c->top->f = 1.f;
+}
+void i_fphase(core_t *c) {
+  c->top->f = fmodf(c->top->f + 1.f, 2.f) - 1.f;
+}
+void i_int127(core_t *c) { c->top->i = c->top->f * 127; }
+void i_int(core_t *c) { c->top->i = c->top->f; }
+void i_in2dp(core_t *c) {
+  int n = c->top->i;
+  float kht = 1.059463f; //2^(1/12)
+  float f = 55.f / (float)samplerate;
+  while(--n>=0) f *= kht; // cheap pow!
+  c->top->f = f;
+}
+void i_float127(core_t *c) { c->top->f = c->top->i / 127.f; }
+void i_float(core_t *c) { c->top->f = c->top->i; }
+void i_iadd(core_t *c) { c->top[1].i += c->top->i, ++c->top; }
+void i_iinc(core_t *c) { c->top[0].i++; }
+void i_idec(core_t *c) { c->top[0].i--; }
+void i_imul(core_t *c) { c->top[1].i *= c->top->i; ++c->top; }
+void i_imulticks(core_t *c) { c->top->i *= samples_in_tick; }
 void i_noise(core_t *c) {
   static int seed = 127;
   seed *= 16807;
@@ -100,11 +123,12 @@ typedef struct {
 } instruction_t;
 instruction_t instructions[] = {
 #define I(name) {#name, i_##name}
-  I(load), I(idle), I(jmp), I(ret), I(spawn),
-  I(loadglobal), I(storeglobal), I(ticks),
-  I(dup), I(get), I(put), I(pop),
-  I(fsgn), I(fadd), I(faddnp), I(fsub), I(fmul), I(fsin), I(fclamp), I(fphaserot), I(noise),
-  I(inote2fdeltaphase)
+  I(load), I(load0), I(load1), I(fload1), I(idle), I(jmp), I(jmpnz), I(yield), I(ret), I(spawn), I(storettl),
+  I(loadglobal), I(storeglobal), I(imulticks),
+  I(dup), I(get), I(put), I(pop), I(swap), I(swap2),
+  I(fsgn), I(fadd), I(faddnp), I(fsub), I(fmul), I(fdiv), I(fsin), I(fclamp), I(fphase), I(noise),
+  I(in2dp),
+  I(int), I(int127), I(float127), I(float), I(iadd), I(iinc), I(idec), I(imul)
 };
 
 #if DEBUG
@@ -131,6 +155,7 @@ inline static void run_core(core_t *c) {
     }
     COREDUMP(c);
     --c->samples_to_idle;
+    if (c->ttl > 0 && --c->ttl == 0) c->pcounter = -1;
   }
 }
 
@@ -304,7 +329,9 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
 
     L("'%s': %02x\n", token, typehint);
 
-    if (token[0] == '$') { // global var reference
+    if (token[0] == ';') { // comment
+      tokend += strcspn(tokend, "\n");
+    } else if (token[0] == '$') { // global var reference
       program[program_counter++] = InstrLoad;
       program[program_counter++] = get_global(token);
     } else if (token[0] == '@') { // sampler reference
