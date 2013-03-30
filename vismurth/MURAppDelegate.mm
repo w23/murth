@@ -38,6 +38,7 @@ public:
   murth_init(((NSString*)[NSString stringWithContentsOfFile:self.playFile
                                                    encoding:NSUTF8StringEncoding error:nil]).UTF8String, samplerate, 90);
   murth_set_midi_note_handler("midinote", -1, -1);
+  murth_set_midi_control_handler("ctrl_notelength", -1, -1, -1);
   osx_audio_start();
 }
 - (BOOL)windowShouldClose:(id)sender {

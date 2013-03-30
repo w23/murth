@@ -19,8 +19,19 @@ extern int murth_set_midi_note_handler(const char *label, int channel, int note)
 extern void murth_process_raw_midi(const void *packet, int bytes);
 extern void murth_synthesize(float* ptr, int count);
 
-//! \todo
-//extern int murth_get_event();
+//!
+typedef struct {
+  union {
+    int i;
+    float f;
+  };
+} var_t;
+typedef struct {
+  int samplestamp;
+  int event;
+  var_t value;
+} murth_event_t;
+extern int murth_get_event(murth_event_t *event);
 
 #ifdef __cplusplus
 }

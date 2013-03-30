@@ -1,3 +1,6 @@
+//! \fixme apple-specific
+#include <libkern/OSAtomic.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,14 +17,9 @@
 #define MAX_SAMPLER_SIZE_BITS 16
 #define MAX_SAMPLER_SIZE (1 << MAX_SAMPLER_SIZE_BITS)
 #define MAX_SAMPLER_SIZE_MASK (MAX_SAMPLER_SIZE - 1)
+#define MAX_PENDING_EVENTS 32
 
 typedef unsigned char u8;
-typedef struct {
-  union {
-    int i;
-    float f;
-  };
-} var_t;
 typedef struct {
   float samples[MAX_SAMPLER_SIZE];
 } sampler_t;
@@ -39,6 +37,11 @@ static int samples_in_tick = 0;
 static core_t cores[CORES];
 static var_t globals[GLOBALS];
 //static sampler_t samplers[SAMPLERS];
+static struct {
+  int writepos, readpos;
+  murth_event_t events[MAX_PENDING_EVENTS];
+} event_queue;
+static int current_sample;
 
 void i_load(core_t *c) { (--c->top)->i = program[c->pcounter++]; }
 void i_load0(core_t *c) { (--c->top)->i = 0; }
@@ -111,12 +114,25 @@ void i_idec(core_t *c) { c->top[0].i--; }
 void i_imul(core_t *c) { c->top[1].i *= c->top->i; ++c->top; }
 void i_imulticks(core_t *c) { c->top->i *= samples_in_tick; }
 void i_noise(core_t *c) {
-  static int seed = 127;
-  seed *= 16807;
+  static int seed = 127; seed *= 16807;
   (--c->top)->i = ((unsigned)seed >> 9) | 0x3f800000u;
   c->top[0].f -= 1.0f;
 }
 void i_abs(core_t *c) { c->top->i &= 0x7fffffff; }
+void i_emit(core_t *c) {
+  if (event_queue.readpos == event_queue.readpos) {
+    event_queue.writepos = 0;
+    OSMemoryBarrier();
+    event_queue.readpos = 0;
+  }
+  if (event_queue.writepos < MAX_PENDING_EVENTS) {
+    event_queue.events[event_queue.writepos].samplestamp = current_sample;
+    event_queue.events[event_queue.writepos].value = c->top[0];
+    event_queue.events[event_queue.writepos].event = c->top[1].i;
+    OSAtomicIncrement32Barrier(&event_queue.writepos);
+  }
+  c->top += 2;
+}
 
 typedef struct {
   const char *name;
@@ -124,7 +140,7 @@ typedef struct {
 } instruction_t;
 instruction_t instructions[] = {
 #define I(name) {#name, i_##name}
-  I(load), I(load0), I(load1), I(fload1), I(idle), I(jmp), I(jmpnz), I(yield), I(ret), I(spawn), I(storettl),
+  I(load), I(load0), I(load1), I(fload1), I(idle), I(jmp), I(jmpnz), I(yield), I(ret), I(spawn), I(storettl), I(emit),
   I(loadglobal), I(storeglobal), I(imulticks),
   I(dup), I(get), I(put), I(pop), I(swap), I(swap2),
   I(fsign), I(fadd), I(faddnp), I(fsub), I(fmul), I(fdiv), I(fsin), I(fclamp), I(fphase), I(noise),
@@ -160,7 +176,7 @@ inline static void run_core(core_t *c) {
     }
     COREDUMP(c);
     --c->samples_to_idle;
-    if (c->ttl > 0 && --c->ttl == 0) c->pcounter = -1;
+    if (c->ttl == 0 || ((c->ttl > 0) && ((--c->ttl) == 0))) c->pcounter = -1;
   }
 }
 
@@ -169,6 +185,7 @@ void murth_synthesize(float *ptr, int count) {
     globals[0].i = 0;
     for (int j = CORES - 1; j >= 0; --j) run_core(cores + j);
     ptr[i] = globals[0].f;
+    ++current_sample;
   }
 }
 
@@ -278,11 +295,13 @@ static int get_instruction(const char *name) {
 
 
 int murth_init(const char *assembly, int in_samplerate, int bpm) {
+  current_sample = 0;
   samplerate = in_samplerate;
   samples_in_tick = (samplerate * 60) / (16 * bpm);
 
   // assemble
   // prepare
+  memset(&event_queue, 0, sizeof(event_queue));
   memset(global_names, 0, sizeof(global_names));
   memset(sampler_names, 0, sizeof(sampler_names));
   memset(label_names, 0, sizeof(label_names));
@@ -313,7 +332,7 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
       continue;
     }
 
-    const int len = tokend - tok;
+    const long len = tokend - tok;
     if (len == 0) break;
 
     char token[MAX_NAME_LENGTH];
@@ -454,5 +473,12 @@ void murth_process_raw_midi(const void *packet, int bytes) {
       case 0x90: run_note(p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // note on
       case 0xb0: run_control(p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // control change
     }
+}
+
+int murth_get_event(murth_event_t *event) {
+  if (event_queue.readpos >= event_queue.writepos)
+    return 0;
+  memcpy(event, event_queue.events + event_queue.readpos, sizeof(*event));
+  ++event_queue.readpos;
 }
 

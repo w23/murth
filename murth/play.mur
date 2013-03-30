@@ -1,15 +1,18 @@
-ret ; no default processing here
+_start:
+  16 $notelength storeglobal ; default notelength
+  ret ; no default processing here
 
 midinote: ; reaction to midi note on
         ; [channel velocity note]
   in2dp ; [c v dp]
   load0 ; [c v dp p]
   02 :noteosc spawn ; spawn new core with [dp p] stack
+  load0 load1 emit
   ret
 
 noteosc:  ; note oscillator
           ; [dp p]
-  16          ; [dp p T]
+  $notelength loadglobal ; [dp p T]
   imulticks   ; [dp p T=T*tick_samples]
   dup         ; [dp p T T]
   storettl    ; [dp p T]
@@ -36,3 +39,9 @@ noteoscloop:
   swap2
   yield
   :noteoscloop jmp
+
+ctrl_notelength: ; set next notes length
+    ; [channel control value]
+  $notelength storeglobal
+  emit
+  ret
