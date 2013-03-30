@@ -8,11 +8,11 @@
 #include <math.h>
 #include "murth.h"
 
-#define CORES 8
+#define CORES 16
 #define STACK_SIZE 16
 #define GLOBALS 16
 #define MAX_LABELS 16
-#define MAX_PROGRAM_LENGTH 256
+#define MAX_PROGRAM_LENGTH 1024
 #define SAMPLERS 4
 #define MAX_SAMPLER_SIZE_BITS 16
 #define MAX_SAMPLER_SIZE (1 << MAX_SAMPLER_SIZE_BITS)
@@ -371,6 +371,11 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
     }
 
     L("'%s': %02x\n", token, typehint);
+    
+    if (program_counter >= (MAX_PROGRAM_LENGTH-2)) {
+      fprintf(stderr, "Wow, dude. your program is HUGE!11\n");
+      return -1;
+    }
 
     if (token[0] == ';') { // comment
       tokend += strcspn(tokend, "\n");
@@ -474,9 +479,12 @@ static void run_note(int channel, int note, int velocity) {
 static void run_control(int channel, int control, int value) {
   for (int i = 0; i < control_handlers_count; ++i)
     if (control_handlers[i].address >= 0 &&
-      (control_handlers[i].channel == -1 || control_handlers[i].channel == channel) &&
-      (control_handlers[i].control == -1 || control_handlers[i].control == control) &&
-      (control_handlers[i].value == -1 || control_handlers[i].value == value)) {
+      (control_handlers[i].channel == -1
+       || control_handlers[i].channel == channel) &&
+      (control_handlers[i].control == -1
+       || control_handlers[i].control == control) &&
+      (control_handlers[i].value == -1
+       || control_handlers[i].value == value)) {
       core_t c;
       c.samples_to_idle = 0;
       c.pcounter = control_handlers[i].address;
