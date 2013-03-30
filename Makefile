@@ -2,12 +2,12 @@ include common.mk
 
 SOURCES := \
 	murth/jack.c \
-	murth/synth.c \
-	murth/vismurth/visuport.cpp \
-	murth/vismurth/Ground.cpp \
-	murth/vismurth/Central.cpp \
-	murth/vismurth/Halfedge.cpp \
-	murth/vismurth/FlatShadedMesh.cpp \
+	murth/murth.c \
+	vismurth/visuport.cpp \
+	vismurth/Ground.cpp \
+	vismurth/Central.cpp \
+	vismurth/Halfedge.cpp \
+	vismurth/FlatShadedMesh.cpp \
 	murth/main_linux.cpp
 
 #MODULES=$(addprefix build/, $(patsubst %.cpp, %.o, $(SOURCES)))
@@ -21,11 +21,11 @@ DEPS=Makefile common.mk
 vismurth: $(DEPS) $(MODULES) 3p/kapusha/libkapusha.a
 	$(LD) $(LDFLAGS) $(MODULES) -L3p/kapusha -lkapusha -o vismurth
 
-play: $(DEPS) murth/synth.o murth/play.o murth/jack.o
-	$(LD) $(LDFLAGS) murth/synth.o murth/play.o murth/jack.o -o play
+play: $(DEPS) murth/murth.o murth/play_jack.o murth/jack.o
+	$(LD) $(LDFLAGS) murth/murth.o murth/play_jack.o murth/jack.o -o play
 
-test: $(DEPS) murth/synth.o murth/test.o
-	$(LD) $(LDFLAGS) murth/synth.o murth/test.o -o test
+test: $(DEPS) murth/murth.o murth/test.o
+	$(LD) $(LDFLAGS) murth/murth.o murth/test.o -o test
 
 3p/kapusha/libkapusha.a:
 	make -j5 -C 3p/kapusha

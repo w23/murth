@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include "jack.h"
-#include "synth.h"
+#include "murth.h"
 
 int main(int argc, char *argv[]) {
   if (argc < 2) {

@@ -1,5 +1,5 @@
 //! \fixme apple-specific
-#include <libkern/OSAtomic.h>
+//#include <libkern/OSAtomic.h>
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -32,8 +32,12 @@ typedef struct {
   var_t stack[STACK_SIZE], *top;
 } core_t;
 typedef void(*instr_func_t)(core_t *c);
-
-static int program[MAX_PROGRAM_LENGTH];
+struct {
+  union {
+    instr_func_t func;
+    int param;
+  };
+} program[MAX_PROGRAM_LENGTH];
 static int samplerate = 0;
 static int samples_in_tick = 0; 
 static core_t cores[CORES];
@@ -45,7 +49,7 @@ static struct {
 } event_queue;
 static int current_sample;
 
-void i_load(core_t *c) { (--c->top)->i = program[c->pcounter++]; }
+void i_load(core_t *c) { (--c->top)->i = program[c->pcounter++].param; }
 void i_load0(core_t *c) { (--c->top)->i = 0; }
 void i_load1(core_t *c) { (--c->top)->i = 1; }
 void i_fload1(core_t *c) { (--c->top)->f = 1.f; }
@@ -76,7 +80,8 @@ void i_spawn(core_t *c) {
 void i_storettl(core_t *c) { c->ttl = c->top[0].i, ++c->top; }
 void i_loadglobal(core_t *c) { c->top->i = globals[c->top->i].i; }
 void i_storeglobal(core_t *c) { globals[c->top->i].i = c->top[1].i; ++c->top; }
-void i_clearglobal(core_t *c) { globals[c->top[0].i].i = 0, ++c->top; }
+void i_clearglobal(core_t *c) { globals[c->top[0].i].i = 0; ++c->top; }
+void i_faddglobal(core_t *c) { globals[c->top[0].i].f += c->top[1].f; ++c->top; }
 void i_dup(core_t *c) { --c->top; c->top->i = c->top[1].i; }
 void i_get(core_t *c) { *c->top = c->top[c->top->i]; }
 void i_put(core_t *c) { c->top[c->top->i] = c->top[1]; ++c->top; }
@@ -125,7 +130,7 @@ void i_abs(core_t *c) { c->top->i &= 0x7fffffff; }
 void i_emit(core_t *c) {
   if (event_queue.readpos == event_queue.readpos) {
     event_queue.writepos = 0;
-    OSMemoryBarrier();
+    //OSMemoryBarrier();
     event_queue.readpos = 0;
   }
   if (event_queue.writepos < MAX_PENDING_EVENTS) {
@@ -133,7 +138,7 @@ void i_emit(core_t *c) {
     event_queue.events[event_queue.writepos].value = c->top[0];
     event_queue.events[event_queue.writepos].event = c->top[1].i;
     //OSAtomicIncrement32Barrier(&event_queue.writepos);
-    OSMemoryBarrier();
+    //OSMemoryBarrier();
     ++event_queue.writepos;
   }
   c->top += 2;
@@ -159,7 +164,7 @@ typedef struct {
 instruction_t instructions[] = {
 #define I(name) {#name, i_##name}
   I(load), I(load0), I(load1), I(fload1), I(idle), I(jmp), I(jmpnz), I(yield), I(ret), I(spawn), I(storettl), I(emit),
-  I(loadglobal), I(storeglobal), I(clearglobal), I(imulticks),
+  I(loadglobal), I(storeglobal), I(clearglobal), I(faddglobal), I(imulticks),
   I(dup), I(get), I(put), I(pop), I(swap), I(swap2),
   I(fsign), I(fadd), I(faddnp), I(fsub), I(fmul), I(fdiv), I(fsin), I(fclamp), I(fphase), I(noise),
   I(in2dp), I(abs),
@@ -191,7 +196,7 @@ inline static void run_core(core_t *c) {
     while(c->samples_to_idle <= 0) {
       COREDUMP(c);
       c->samples_to_idle = 0;
-      instructions[program[c->pcounter++]].func(c);
+      program[c->pcounter++].func(c);
     }
     COREDUMP(c);
     --c->samples_to_idle;
@@ -312,7 +317,6 @@ static int get_instruction(const char *name) {
   return -1;
 }
 
-
 int murth_init(const char *assembly, int in_samplerate, int bpm) {
   current_sample = 0;
   samplerate = in_samplerate;
@@ -327,7 +331,6 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
   memset(label_forwards, 0, sizeof(label_forwards));
   note_handlers_count = control_handlers_count = 0;
 
-  const int InstrLoad = get_instruction("load");
   int program_counter = 0;
   const char *tok = assembly, *tokend;
   for(;*tok != 0;) {
@@ -373,35 +376,35 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
     L("'%s': %02x\n", token, typehint);
     
     if (program_counter >= (MAX_PROGRAM_LENGTH-2)) {
-      fprintf(stderr, "Wow, dude. your program is HUGE!11\n");
+      fprintf(stderr, "Wow, dude, your program is HUGE!11\n");
       return -1;
     }
 
     if (token[0] == ';') { // comment
       tokend += strcspn(tokend, "\n");
     } else if (token[0] == '$') { // global var reference
-      program[program_counter++] = InstrLoad;
-      program[program_counter++] = get_global(token);
+      program[program_counter++].func = i_load;
+      program[program_counter++].param= get_global(token);
     } else if (token[0] == '@') { // sampler reference
-      program[program_counter++] = InstrLoad;
-      program[program_counter++] = get_sampler(token);
+      program[program_counter++].func = i_load;
+      program[program_counter++].param = get_sampler(token);
     } else if (token[len-1] == ':') { // label definition
       token[len-1] = 0;
       set_label(token, program_counter);
     } else if (token[0] == ':') { // label reference
-      program[program_counter++] = InstrLoad;
+      program[program_counter++].func = i_load;
       int label_position = program_counter;
-      program[program_counter++] = get_label_address(token+1, label_position);
+      program[program_counter++].param = get_label_address(token+1, label_position);
     } else if ((typehint&ALPHA) != 0) { // some kind of string reference
-      program[program_counter++] = get_instruction(token);
+      program[program_counter++].func = instructions[get_instruction(token)].func;
     } else if ((typehint&(DIGIT|DOT)) == (DIGIT|DOT)) { // float constant (no alpha, but digits with a dot)
       var_t v;
       v.f = atof(token);
-      program[program_counter++] = InstrLoad;
-      program[program_counter++] = v.i;
+      program[program_counter++].func = i_load;
+      program[program_counter++].param = v.i;
     } else if ((typehint&DIGIT) != 0) { // integer constant (no alpha and no dot, but digits)
-      program[program_counter++] = InstrLoad;
-      program[program_counter++] = atoi(token);
+      program[program_counter++].func = i_load;
+      program[program_counter++].param = atoi(token);
     } else { // something invalid
       fprintf(stderr, "token '%s' makes no sense\n", token);
       return -1;
@@ -412,7 +415,7 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
   // patch forwarded labels
   for (int i = 0; i < MAX_FORWARDS; ++i)
     if (label_forwards[i].name[0] != 0)
-      program[label_forwards[i].position] = get_label_address(label_forwards[i].name, -1);
+      program[label_forwards[i].position].param = get_label_address(label_forwards[i].name, -1);
 
   for (int i = 1; i < CORES; ++i)
     cores[i].pcounter = -1;
@@ -421,13 +424,13 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
   cores[0].ttl = -1;
   cores[0].top = cores[0].stack + STACK_SIZE - 1;
 
-  for (int i = 0; i < program_counter; ++i) {
+/*  for (int i = 0; i < program_counter; ++i) {
     var_t v; v.i = program[i];
     const char *fname = (program[i] >= 0 && 
                          program[i] < sizeof(instructions)/sizeof(*instructions)) ?
                         instructions[program[i]].name : "%%invalid%";
     fprintf(stderr, "0x%08x: %08x (%d, %f, <%s>)\n", i, program[i], v.i, v.f, fname);
-  }
+  }*/
 
   return 0;
 }

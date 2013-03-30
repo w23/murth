@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <jack/jack.h>
 #include <jack/midiport.h>
-#include "synth.h"
+#include "murth.h"
 
 static const char *client_name = "murth";
 static jack_port_t *audio_output = 0, *midi_input = 0;

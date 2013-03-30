@@ -2,7 +2,7 @@ _start:
   48 $note0length storeglobal ; default notelength
   12 $note1length storeglobal ; default notelength
   load0 :seq0 spawn
-  load0 :seq1 spawn
+;  load0 :seq1 spawn
 mainloop:
   
   $notes0 loadglobal
@@ -16,6 +16,8 @@ mainloop:
   @notes1delay storesampler
   
   fadd
+  0.3 fmul
+  fclamp
   
   load0 storeglobal pop
   $notes0 clearglobal
@@ -46,9 +48,7 @@ sineoscloop:
   dup     ; [da a dp p p]
   fsin    ; [da a dp p sin(p)]
   04 get fmul
-  $notes0 loadglobal fadd
-  fclamp
-  $notes0 storeglobal pop
+  $notes0 faddglobal pop
   swap2 
   faddnp
   swap2
@@ -73,9 +73,7 @@ trioscloop:
   dup     ; [da a dp p p]
   abs 2.5 fmul 1.0 fsub fclamp
   04 get fmul
-  $notes1 loadglobal fadd
-  fclamp
-  $notes1 storeglobal pop
+  $notes1 faddglobal pop
   swap2
   faddnp
   swap2

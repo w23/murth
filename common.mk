@@ -1,8 +1,8 @@
 CC ?= clang
 CXX ?= clang
 LD ?= clang
-C_FLAGS = -g -Wall -Werror -fno-exceptions -fno-rtti -I. -I3p/kapusha `pkg-config --cflags jack` -Wno-invalid-offsetof
-LDFLAGS = -lm `pkg-config --libs jack` -lstdc++
+C_FLAGS = -g -Wall -Werror -fno-exceptions -I. -I3p/kapusha `pkg-config --cflags jack`
+LDFLAGS = -lm `pkg-config --libs jack` #-lstdc++
 
 ifeq ($(DEBUG),1)
 	C_FLAGS += -O0 -g -DDEBUG=1
@@ -18,7 +18,7 @@ else
 	LDFLAGS += `pkg-config --libs sdl` -lGL
 endif
 
-CXXFLAGS = $(C_FLAGS) -std=c++11
+CXXFLAGS = $(C_FLAGS) -std=c++11 -fno-rtti -Wno-invalid-offsetof
 CFLAGS += $(C_FLAGS) -std=c99
 
 .SUFFIXES: .cpp .o
