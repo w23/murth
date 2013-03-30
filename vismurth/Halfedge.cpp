@@ -76,7 +76,7 @@ int Halfedge::triangleAdd(int edge0, int edge1, int edge2) {
 int Halfedge::edgeSplit(int edge) {
   edge_t &e = edges_[edge];
   if (e.reverse_half == -1) { // reverse is not split yet
-    int pmiddle = vertexAdd((vertices_[e.start] + vertices_[e.end]) * .5);
+    int pmiddle = vertexAdd(((vertices_[e.start] + vertices_[e.end]) * .5).normalized());
     int enext = edgeAdd(pmiddle, e.end);
     edges_[enext].next = e.next, e.next = enext;
     e.end = pmiddle;

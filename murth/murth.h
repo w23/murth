@@ -16,7 +16,7 @@ extern int murth_set_midi_note_handler(const char *label, int channel, int note)
 
 //! must be called from teh same thread as synthesize
 //! midi stream is assumed to be valid
-extern void murth_process_raw_midi(void *packet, int bytes);
+extern void murth_process_raw_midi(const void *packet, int bytes);
 extern void murth_synthesize(float* ptr, int count);
 
 //! \todo

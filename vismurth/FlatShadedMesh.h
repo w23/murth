@@ -6,7 +6,7 @@ public:
   ~FlatShadedMesh();
   void init(int nraw_vertices, int ntriangles);
 protected:
-  struct vertex_t { vec3f p, n; };
+  struct vertex_t { vec3f p, n, v; };
   int nraw_vertices_;
   vertex_t *raw_vertices_;
   int ntriangles_;

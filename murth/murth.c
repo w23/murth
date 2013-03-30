@@ -3,7 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
-#include "synth.h"
+#include "murth.h"
 
 #define CORES 8
 #define STACK_SIZE 16
@@ -132,6 +132,10 @@ instruction_t instructions[] = {
   I(int), I(int127), I(float127), I(float), I(iadd), I(iinc), I(idec), I(imul)
 };
 
+#if defined(DEBUG)
+#undef DEBUG
+#define DEBUG 0
+#endif
 #if DEBUG
 #define L(...) fprintf(stderr, __VA_ARGS__);
 void coredump(core_t *c) {
@@ -443,7 +447,7 @@ static void run_control(int channel, int control, int value) {
     }
 }
 
-void murth_process_raw_midi(void *packet, int bytes) {
+void murth_process_raw_midi(const void *packet, int bytes) {
   const u8 *p = (u8*)packet;
   for (int i = 0; i < bytes; ++i)
     switch(p[i] & 0xf0) {

@@ -1,5 +1,4 @@
-#include "../synth.h"
-#include "../jack.h"
+#include "../murth/murth.h"
 #include <kapusha/core/Core.h>
 #include <kapusha/core/IViewport.h>
 #include <kapusha/render/Render.h>
@@ -7,13 +6,6 @@
 #include "Ground.h"
 #include "Central.h"
 using namespace kapusha;
-ifu probdata[4][4096];
-probe probes[4] = {
-  {0, 4096, probdata[0]},
-  {0, 4096, probdata[1]},
-  {0, 4096, probdata[2]},
-  {0, 4096, probdata[3]},
-};
 
 class Visuport : public IViewport {
 public:
@@ -32,12 +24,12 @@ private:
   float sampleAngle_;
 };
 IViewport *makeViewport() { return new Visuport; }
-Visuport::Visuport() : is_playing_(false), camera_(vec3f(10.f), vec3f(0), vec3f(0,0,1)), sampleAngle_(0) {}
+Visuport::Visuport() : is_playing_(false), camera_(vec3f(10.f,10.f,5.f), vec3f(0), vec3f(0,0,1)), sampleAngle_(0) {}
 void Visuport::init(IViewportController *system) {
   controller_ = system;
   render_ = new Render;
-  ground_ = new Ground(64, 1.f);
-  central_ = new Central(2, .4f);
+  ground_ = new Ground(32, 2.f);
+  central_ = new Central(2, 1.f);
   central_->frame().move(vec3f(0,0,4));
   central_->frame().update();
   render_->cullFace().enable();
@@ -52,25 +44,27 @@ void Visuport::resize(vec2i s) {
 }
 
 void Visuport::draw(int ms, float dt) {
-  if (!is_playing_) { jack_audio_start(); is_playing_ = true; }
-  
   glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-  float angle = ms * 1e-3f;
-  camera_.lookAt(vec3f(cos(angle), sin(angle), 1) * 10.f, vec3f(0), vec3f(0,0,1));
+  float angle = c_pi4 + .2*sin(ms * 1e-3f);
+  camera_.lookAt(vec3f(cos(angle), sin(angle), .5f) * 10.f, vec3f(0), vec3f(0,0,1));
   camera_.update();
   
   //tex[0].upload(Texture::ImageDesc(64, 64, Texture::ImageDesc::Format_R32F), probdata
-  float sas = c_2pi / 4.f;
+  /*float sas = c_2pi / 4.f;
   float sad = sas * dt;
+  float sum = 0;
   for (int i = 0; i < 1024; i+=4) {
     float angle = sampleAngle_ + sad * i / 1024;
     ground_->spike(vec3f(cos(angle) * 16.f, sin(angle) * 16.f, 4.f * probdata[2][i].f));
+    sum += probdata[0][i].f;
   }
-  sampleAngle_ = fmodf(sampleAngle_ + sad, c_2pi);
+  if (sum > 120.f) central_->spike(4.f);
+  sampleAngle_ = fmodf(sampleAngle_ + sad, c_2pi);*/
   ground_->update(ms, dt);
   ground_->draw(Render::currentRender(), camera_.getMvp());
   //central_->frame().rotateRoll(dt);
   //central_->frame().update();
+  central_->update(dt);
   central_->draw(Render::currentRender(), camera_.getMvp());
   controller_->requestRedraw();
 }
