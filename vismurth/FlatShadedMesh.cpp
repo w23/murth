@@ -1,6 +1,9 @@
 #include "FlatShadedMesh.h"
 
 static const char shader_vertex[] =
+#if KAPUSHA_GLES
+"precision mediump float;"
+#endif
 "attribute vec3 av3_pos, av3_normal, av3_v;\n"
 "uniform mat4 um4_mvp;\n"
 "uniform vec3 uv3_l1_pos, uv3_l1_color;"
@@ -15,6 +18,9 @@ static const char shader_vertex[] =
 "vv3_color = vec3(.2) + uv3_l1_color * max(dot(normal,uv3_l1_pos), 0.);\n"
 "}\n";
 static const char shader_fragment[] =
+#if KAPUSHA_GLES
+"precision mediump float;"
+#endif
 "varying vec3 vv3_color, vv3_v;\n"
 "void main() {\n"
 "gl_FragColor = vec4(vv3_color, 1.) + vec4(step(min(vv3_v.x,min(vv3_v.y,vv3_v.z)),.02));\n"
@@ -34,17 +40,19 @@ void FlatShadedMesh::init(int nraw_vertices, int ntriangles) {
   Batch *b = new Batch(m);
   vertices_ = new Buffer();
   vertices_->alloc(nvertices_ * sizeof(vertex_t), Buffer::StreamDraw);
+  buf_vertices_ = new vertex_t[nvertices_];
   b->setGeometry(Batch::GeometryTriangleList, 0, nvertices_);
   b->setAttribSource("av3_pos", vertices_,
-                     3, offsetof(vertex_t, p), sizeof(vertex_t));
+                     3, 0, sizeof(vertex_t));
   b->setAttribSource("av3_normal", vertices_,
-                     3, offsetof(vertex_t, n), sizeof(vertex_t));
+                     3, sizeof(vec3f), sizeof(vertex_t));
   b->setAttribSource("av3_v", vertices_,
-                     3, offsetof(vertex_t, v), sizeof(vertex_t));
+                     3, 2*sizeof(vec3f), sizeof(vertex_t));
   addBatch(b);
 }
 
 FlatShadedMesh::~FlatShadedMesh() {
+  delete buf_vertices_;
   delete raw_vertices_;
   delete raw_indices_;
 }
@@ -61,7 +69,11 @@ void FlatShadedMesh::calcNormalsAndUpload() { {
     }
     //for (int i = 0; i < nraw_vertices_; ++i) raw_vertices_[i].n.normalize();
   } {
+#if KAPUSHA_GLES
+    vertex_t *bv = buf_vertices_;
+#else
     vertex_t *bv = static_cast<vertex_t*>(vertices_->map(Buffer::WriteOnly));
+#endif
     int *p = raw_indices_;
     for (int i = ntriangles_; i > 0; --i, bv+=3) {
       vertex_t &v0 = raw_vertices_[*(p++)],
@@ -72,6 +84,10 @@ void FlatShadedMesh::calcNormalsAndUpload() { {
       bv[1].p = v1.p, bv[1].n = normal, bv[1].v = vec3f(0,1,0);
       bv[2].p = v2.p, bv[2].n = normal, bv[2].v = vec3f(0,0,1);
     }
+#if KAPUSHA_GLES
+    vertices_->load(buf_vertices_, sizeof(vertex_t) * nvertices_, Buffer::StreamDraw);
+#else
     vertices_->unmap();
+#endif
   }
 }

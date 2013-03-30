@@ -9,6 +9,7 @@ protected:
   struct vertex_t { vec3f p, n, v; };
   int nraw_vertices_;
   vertex_t *raw_vertices_;
+  vertex_t *buf_vertices_;
   int ntriangles_;
   int *raw_indices_;
   void calcNormalsAndUpload();

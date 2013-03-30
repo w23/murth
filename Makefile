@@ -18,8 +18,8 @@ DEPS=Makefile common.mk
 
 .PHONY: clean
 
-vismurth: $(DEPS) $(MODULES) 3p/kapusha/libkapusha.a
-	$(LD) $(LDFLAGS) $(MODULES) -L3p/kapusha -lkapusha -o vismurth
+vismurth_bin: $(DEPS) $(MODULES) 3p/kapusha/libkapusha.a
+	$(LD) $(LDFLAGS) $(MODULES) -L3p/kapusha -lkapusha -o vismurth_bin
 
 play: $(DEPS) murth/murth.o murth/play_jack.o murth/jack.o
 	$(LD) $(LDFLAGS) murth/murth.o murth/play_jack.o murth/jack.o -o play

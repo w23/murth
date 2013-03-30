@@ -2,7 +2,7 @@ CC ?= clang
 CXX ?= clang
 LD ?= clang
 C_FLAGS = -g -Wall -Werror -fno-exceptions -I. -I3p/kapusha `pkg-config --cflags jack`
-LDFLAGS = -lm `pkg-config --libs jack` #-lstdc++
+LDFLAGS = -lm `pkg-config --libs jack`
 
 ifeq ($(DEBUG),1)
 	C_FLAGS += -O0 -g -DDEBUG=1
