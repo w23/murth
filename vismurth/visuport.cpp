@@ -50,7 +50,8 @@ void Visuport::draw(int ms, float dt) {
   camera_.update();
   
   murth_event_t mevent;
-  while (murth_get_event(&mevent)) {
+  while (murth_get_event(&mevent) != 0) {
+    L("%d: %d %f", mevent.event, mevent.value.i, mevent.value.f);
     switch (mevent.event) {
     case 0:
       central_->spike(9.f);
@@ -61,8 +62,6 @@ void Visuport::draw(int ms, float dt) {
         camera_.translate(vec3f(20.f * (mevent.value.i / 127.f - .5f), 6.f, 7.f));
         camera_.update();
       break;
-    default:
-      L("%d: %d", mevent.event, mevent.value.i);
     }
   }
   sampleAngle_ = fmodf(sampleAngle_ + dt * c_2pi / 4.f, c_2pi);

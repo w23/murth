@@ -22,7 +22,7 @@ void Central::spike(float r) {
   v.p += v.p.normalized() * r;
 }
 void Central::update(float dt) {
-  float dl = dt * 12.f;
+  float dl = dt * 8.f;
   for (int i = 0; i < nraw_vertices_; ++i) {
     vertex_t &v = raw_vertices_[i];
     if ((v.p.length_sq() - dl*dl) > 1.f)

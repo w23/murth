@@ -1,22 +1,30 @@
 _start:
-  16 $notelength storeglobal ; default notelength
-  ret ; no default processing here
+  48 $notelength storeglobal ; default notelength
+  load0 :sequencer spawn
+mainloop:
+  $notes loadglobal
+  12 imulticks @notesdelay loadsamplerd
+  0.4 fmul fadd
+  @notesdelay storesampler
+  load0 storeglobal pop
+  $notes clearglobal
+  yield :mainloop jmp
 
 midinote: ; reaction to midi note on
         ; [channel velocity note]
-  in2dp ; [c v dp]
-  load0 ; [c v dp p]
-  02 :noteosc spawn ; spawn new core with [dp p] stack
-  load0 load1 emit
+  01 :noteosc spawn ; spawn new core with [n] stack
   ret
 
 noteosc:  ; note oscillator
-          ; [dp p]
+          ; [n]
+  dup load0 swap emit
+  in2dp   ; [dp]
+  load0   ; [dp p]
   $notelength loadglobal ; [dp p T]
   imulticks   ; [dp p T=T*tick_samples]
   dup         ; [dp p T T]
   storettl    ; [dp p T]
-  -1.0 swap    ; [dp p -1.0 T]
+  -1.0 swap   ; [dp p -1.0 T]
   float fdiv  ; [dp p da=-1.0/T]
   fload1      ; [dp p da a=1.0]
   swap2       ; [da a dp p]
@@ -24,24 +32,31 @@ noteoscloop:
   faddnp  ; [da a dp p=p+dp]
   fphase
   dup     ; [da a dp p p]
-  ;fsin    ; [da a dp p sin(p)]
+  fsin    ; [da a dp p sin(p)]
   ;dup fmul dup fmul dup fmul
   ;dup fsign swap fsin fadd
   ;fsign
-  abs 2.5 fmul 1.0 fsub fclamp
+  ;abs 2.5 fmul 1.0 fsub fclamp
   0.5 fmul
   04 get fmul
-  load0 loadglobal fadd
+  $notes loadglobal fadd
   fclamp
-  load0 storeglobal pop
+  $notes storeglobal pop
   swap2 
   faddnp
   swap2
-  yield
-  :noteoscloop jmp
+  yield :noteoscloop jmp
 
 ctrl_notelength: ; set next notes length
     ; [channel control value]
   $notelength storeglobal
   emit
   ret
+
+sequencer:
+  -1 storettl
+seqloop:
+  26 01 :noteosc spawn 31 01 :noteosc spawn 32 imulticks idle
+  28 01 :noteosc spawn 33 01 :noteosc spawn 32 imulticks idle
+  30 01 :noteosc spawn 23 01 :noteosc spawn 64 imulticks idle
+  :seqloop jmp

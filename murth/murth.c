@@ -21,12 +21,14 @@
 
 typedef unsigned char u8;
 typedef struct {
+  int cursor;
   float samples[MAX_SAMPLER_SIZE];
 } sampler_t;
 typedef struct {
   int samples_to_idle;
   int ttl;
   int pcounter;
+  //! \todo two stacks (f-stack and i-stack ?)
   var_t stack[STACK_SIZE], *top;
 } core_t;
 typedef void(*instr_func_t)(core_t *c);
@@ -36,7 +38,7 @@ static int samplerate = 0;
 static int samples_in_tick = 0; 
 static core_t cores[CORES];
 static var_t globals[GLOBALS];
-//static sampler_t samplers[SAMPLERS];
+static sampler_t samplers[SAMPLERS];
 static struct {
   int writepos, readpos;
   murth_event_t events[MAX_PENDING_EVENTS];
@@ -74,6 +76,7 @@ void i_spawn(core_t *c) {
 void i_storettl(core_t *c) { c->ttl = c->top[0].i, ++c->top; }
 void i_loadglobal(core_t *c) { c->top->i = globals[c->top->i].i; }
 void i_storeglobal(core_t *c) { globals[c->top->i].i = c->top[1].i; ++c->top; }
+void i_clearglobal(core_t *c) { globals[c->top[0].i].i = 0, ++c->top; }
 void i_dup(core_t *c) { --c->top; c->top->i = c->top[1].i; }
 void i_get(core_t *c) { *c->top = c->top[c->top->i]; }
 void i_put(core_t *c) { c->top[c->top->i] = c->top[1]; ++c->top; }
@@ -129,9 +132,24 @@ void i_emit(core_t *c) {
     event_queue.events[event_queue.writepos].samplestamp = current_sample;
     event_queue.events[event_queue.writepos].value = c->top[0];
     event_queue.events[event_queue.writepos].event = c->top[1].i;
-    OSAtomicIncrement32Barrier(&event_queue.writepos);
+    //OSAtomicIncrement32Barrier(&event_queue.writepos);
+    OSMemoryBarrier();
+    ++event_queue.writepos;
   }
   c->top += 2;
+}
+void i_storesampler(core_t *c) {
+  sampler_t *s = samplers + c->top[0].i;
+  s->samples[s->cursor] = c->top[1].f;
+  s->cursor = (s->cursor + 1) & MAX_SAMPLER_SIZE_MASK;
+  ++c->top;
+}
+//void i_loadsampler(core_t *c) {
+//}
+void i_loadsamplerd(core_t *c) {
+  sampler_t *s = samplers + c->top[0].i;
+  c->top[1].f = s->samples[(s->cursor - c->top[1].i) & MAX_SAMPLER_SIZE_MASK];
+  ++c->top;
 }
 
 typedef struct {
@@ -141,11 +159,12 @@ typedef struct {
 instruction_t instructions[] = {
 #define I(name) {#name, i_##name}
   I(load), I(load0), I(load1), I(fload1), I(idle), I(jmp), I(jmpnz), I(yield), I(ret), I(spawn), I(storettl), I(emit),
-  I(loadglobal), I(storeglobal), I(imulticks),
+  I(loadglobal), I(storeglobal), I(clearglobal), I(imulticks),
   I(dup), I(get), I(put), I(pop), I(swap), I(swap2),
   I(fsign), I(fadd), I(faddnp), I(fsub), I(fmul), I(fdiv), I(fsin), I(fclamp), I(fphase), I(noise),
   I(in2dp), I(abs),
-  I(int), I(int127), I(float127), I(float), I(iadd), I(iinc), I(idec), I(imul)
+  I(int), I(int127), I(float127), I(float), I(iadd), I(iinc), I(idec), I(imul),
+  I(storesampler), I(loadsamplerd)
 };
 
 #if defined(DEBUG)
@@ -394,6 +413,7 @@ int murth_init(const char *assembly, int in_samplerate, int bpm) {
     cores[i].pcounter = -1;
   cores[0].samples_to_idle = 0;
   cores[0].pcounter = 0;
+  cores[0].ttl = -1;
   cores[0].top = cores[0].stack + STACK_SIZE - 1;
 
   for (int i = 0; i < program_counter; ++i) {
@@ -480,5 +500,6 @@ int murth_get_event(murth_event_t *event) {
     return 0;
   memcpy(event, event_queue.events + event_queue.readpos, sizeof(*event));
   ++event_queue.readpos;
+  return 1;
 }
 
