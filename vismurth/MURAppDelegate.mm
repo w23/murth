@@ -36,9 +36,15 @@ public:
   int samplerate;
   osx_audio_init(&samplerate);
   murth_init(((NSString*)[NSString stringWithContentsOfFile:self.playFile
-                                                   encoding:NSUTF8StringEncoding error:nil]).UTF8String, samplerate, 90);
+                                                   encoding:NSUTF8StringEncoding error:nil]).UTF8String, samplerate, 120);
   murth_set_midi_note_handler("midinote", -1, -1);
-  murth_set_midi_control_handler("ctrl_notelength", -1, -1, -1);
+  murth_set_midi_control_handler("midi_trivol", -1, 1, -1);
+  murth_set_midi_control_handler("midi_sinevol", -1, 2, -1);
+  murth_set_midi_control_handler("midi_sqvol", -1, 3, -1);
+  murth_set_midi_control_handler("midi_delay0wet", -1, 4, -1);
+  murth_set_midi_control_handler("midi_delay1wet", -1, 5, -1);
+  murth_set_midi_control_handler("midi_delayMwet", -1, 6, -1);
+  murth_set_midi_control_handler("midi_delayM", -1, 7, -1);
   osx_audio_start();
 }
 - (BOOL)windowShouldClose:(id)sender {

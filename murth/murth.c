@@ -9,10 +9,10 @@
 #include "murth.h"
 
 #define CORES 16
-#define STACK_SIZE 16
-#define GLOBALS 16
-#define MAX_LABELS 16
-#define MAX_PROGRAM_LENGTH 1024
+#define STACK_SIZE 32
+#define GLOBALS 128
+#define MAX_LABELS 128
+#define MAX_PROGRAM_LENGTH 2048
 #define SAMPLERS 4
 #define MAX_SAMPLER_SIZE_BITS 16
 #define MAX_SAMPLER_SIZE (1 << MAX_SAMPLER_SIZE_BITS)
@@ -190,7 +190,7 @@ void coredump(core_t *c) {
 #define L(...)
 #endif
 
-inline static void run_core(core_t *c) {
+static void run_core(core_t *c) {
   if (c->pcounter >= 0) {
     L("core %p:\n", c);
     while(c->samples_to_idle <= 0) {

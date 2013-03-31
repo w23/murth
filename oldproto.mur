@@ -1,25 +1,37 @@
 _start:
-  08 $note0length storeglobal ; default notelength
-   $note1length storeglobal ; default notelength
-  load0 :seq0 spawn
-  load0 :seq1 spawn
-  load0 :seq2 spawn
+  08 $sinelength storeglobal pop
+  08 $trilength storeglobal pop
+  08 $sqlength storeglobal pop
+  00 $trivol storeglobal pop
+  00 $sinevol storeglobal pop
+  00 $sqvol storeglobal pop
+  00 $delay0wet storeglobal pop
+  00 $delay1wet storeglobal pop
+  04 $delayM storeglobal pop
+  00 $delayMwet storeglobal pop
+  load0 :seqtri   spawn
+  load0 :seqsine  spawn
+  load0 :seqsq    spawn
 mainloop:
   
   $notes0 loadglobal
   12 imulticks @notes0delay loadsamplerd
-  0.4 fmul fadd
+  $delay0wet loadglobal fmul fadd
   @notes0delay storesampler
   
   $notes1 loadglobal
   24 imulticks @notes1delay loadsamplerd
-  0.6 fmul fadd
+  $delay1wet loadglobal fmul fadd
   @notes1delay storesampler
   
   fadd
   0.3 fmul
   fclamp
-  
+
+  $delayM imulticks @delayM loadsamplerd
+  $delayMwet loadglobal fmul fadd
+  @delayM storesampler
+
   load0 storeglobal pop
   $notes0 clearglobal
   $notes1 clearglobal
@@ -35,7 +47,7 @@ sineosc:  ; note oscillator
   dup load0 swap emit
   in2dp   ; [dp]
   load0   ; [dp p]
-  $note0length loadglobal ; [dp p T]
+  $sinelength loadglobal ; [dp p T]
   imulticks   ; [dp p T=T*tick_samples]
   dup         ; [dp p T T]
   storettl    ; [dp p T]
@@ -49,6 +61,7 @@ sineoscloop:
   dup     ; [da a dp p p]
   fsin    ; [da a dp p sin(p)]
   04 get fmul
+  $sinevol loadglobal fmul
   $notes0 faddglobal pop
   swap2 
   faddnp
@@ -60,7 +73,7 @@ triosc:  ; note oscillator
   dup load0 swap emit
   in2dp   ; [dp]
   load0   ; [dp p]
-  $note1length loadglobal ; [dp p T]
+  $trilength loadglobal ; [dp p T]
   imulticks   ; [dp p T=T*tick_samples]
   dup         ; [dp p T T]
   storettl    ; [dp p T]
@@ -74,6 +87,7 @@ trioscloop:
   dup     ; [da a dp p p]
   abs 2.5 fmul 1.0 fsub fclamp
   04 get fmul
+  $trivol loadglobal fmul
   $notes0 faddglobal pop
   swap2
   faddnp
@@ -85,7 +99,7 @@ sqosc:  ; note oscillator
   dup load0 swap emit
   in2dp       ; [dp]
   load0       ; [dp p]
-  $note1length loadglobal ; [dp p T]
+  $sqlength loadglobal ; [dp p T]
   imulticks   ; [dp p T=T*tick_samples]
   dup         ; [dp p T T]
   storettl    ; [dp p T]
@@ -99,6 +113,7 @@ sqoscloop:
   dup     ; [da a dp p p]
   fsign
   04 get fmul
+  $sqvol loadglobal fmul
   $notes1 faddglobal pop
   swap2
   faddnp
@@ -111,27 +126,35 @@ ctrl_notelength: ; set next notes length
   emit
   ret
 
-seq0:
+midi_trivol: float127 $trivol storeglobal ret
+midi_sinevol: float127 $sinevol storeglobal ret
+midi_sqvol: float127 $sqvol storeglobal ret
+midi_delay0wet: float127 $delay0wet storeglobal ret
+midi_delay1wet: float127 $delay1wet storeglobal ret
+midi_delayMwet: float127 $delayMwet storeglobal ret
+midi_delayM: $delayM storeglobal ret
+
+seqtri:
   -1 storettl
-seq0loop:
+seqtriloop:
   53 01 :triosc spawn 08 imulticks idle
   51 01 :triosc spawn 08 imulticks idle
   48 01 :triosc spawn 08 imulticks idle
   46 01 :triosc spawn 08 imulticks idle
-  :seq0loop jmp
+  :seqtriloop jmp
 
-seq1:
+seqsine:
   -1 storettl
-seq1loop:
-  36 01 :sineosc spawn 08 imulticks idle
+seqsineloop:
+  46 01 :sineosc spawn 08 imulticks idle
   41 01 :sineosc spawn 08 imulticks idle
   39 01 :sineosc spawn 08 imulticks idle
   36 01 :sineosc spawn 08 imulticks idle
-  :seq1loop jmp
+  :seqsineloop jmp
 
-seq2:
+seqsq:
   -1 storettl
-seq2loop:
+seqsqloop:
   29 01 :sqosc spawn 16 imulticks idle
   34 01 :sqosc spawn 16 imulticks idle
   32 01 :sqosc spawn 16 imulticks idle
@@ -141,4 +164,4 @@ seq2loop:
   36 01 :sqosc spawn 08 imulticks idle
   34 01 :sqosc spawn 08 imulticks idle
   32 01 :sqosc spawn 16 imulticks idle
-  :seq2loop jmp
+  :seqsqloop jmp
