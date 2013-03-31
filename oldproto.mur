@@ -1,0 +1,144 @@
+_start:
+  08 $note0length storeglobal ; default notelength
+   $note1length storeglobal ; default notelength
+  load0 :seq0 spawn
+  load0 :seq1 spawn
+  load0 :seq2 spawn
+mainloop:
+  
+  $notes0 loadglobal
+  12 imulticks @notes0delay loadsamplerd
+  0.4 fmul fadd
+  @notes0delay storesampler
+  
+  $notes1 loadglobal
+  24 imulticks @notes1delay loadsamplerd
+  0.6 fmul fadd
+  @notes1delay storesampler
+  
+  fadd
+  0.3 fmul
+  fclamp
+  
+  load0 storeglobal pop
+  $notes0 clearglobal
+  $notes1 clearglobal
+  yield :mainloop jmp
+
+midinote: ; reaction to midi note on
+        ; [channel velocity note]
+  01 :triosc spawn ; spawn new core with [n] stack
+  ret
+
+sineosc:  ; note oscillator
+          ; [n]
+  dup load0 swap emit
+  in2dp   ; [dp]
+  load0   ; [dp p]
+  $note0length loadglobal ; [dp p T]
+  imulticks   ; [dp p T=T*tick_samples]
+  dup         ; [dp p T T]
+  storettl    ; [dp p T]
+  -1.0 swap   ; [dp p -1.0 T]
+  float fdiv  ; [dp p da=-1.0/T]
+  fload1      ; [dp p da a=1.0]
+  swap2       ; [da a dp p]
+sineoscloop:
+  faddnp  ; [da a dp p=p+dp]
+  fphase
+  dup     ; [da a dp p p]
+  fsin    ; [da a dp p sin(p)]
+  04 get fmul
+  $notes0 faddglobal pop
+  swap2 
+  faddnp
+  swap2
+  yield :sineoscloop jmp
+
+triosc:  ; note oscillator
+          ; [n]
+  dup load0 swap emit
+  in2dp   ; [dp]
+  load0   ; [dp p]
+  $note1length loadglobal ; [dp p T]
+  imulticks   ; [dp p T=T*tick_samples]
+  dup         ; [dp p T T]
+  storettl    ; [dp p T]
+  -1.0 swap   ; [dp p -1.0 T]
+  float fdiv  ; [dp p da=-1.0/T]
+  fload1      ; [dp p da a=1.0]
+  swap2       ; [da a dp p]
+trioscloop:
+  faddnp  ; [da a dp p=p+dp]
+  fphase
+  dup     ; [da a dp p p]
+  abs 2.5 fmul 1.0 fsub fclamp
+  04 get fmul
+  $notes0 faddglobal pop
+  swap2
+  faddnp
+  swap2
+  yield :trioscloop jmp
+
+sqosc:  ; note oscillator
+  ; [n]
+  dup load0 swap emit
+  in2dp       ; [dp]
+  load0       ; [dp p]
+  $note1length loadglobal ; [dp p T]
+  imulticks   ; [dp p T=T*tick_samples]
+  dup         ; [dp p T T]
+  storettl    ; [dp p T]
+  -1.0 swap   ; [dp p -1.0 T]
+  float fdiv  ; [dp p da=-1.0/T]
+  fload1      ; [dp p da a=1.0]
+  swap2       ; [da a dp p]
+sqoscloop:
+  faddnp  ; [da a dp p=p+dp]
+  fphase
+  dup     ; [da a dp p p]
+  fsign
+  04 get fmul
+  $notes1 faddglobal pop
+  swap2
+  faddnp
+  swap2
+  yield :sqoscloop jmp
+
+ctrl_notelength: ; set next notes length
+    ; [channel control value]
+  $note0length storeglobal
+  emit
+  ret
+
+seq0:
+  -1 storettl
+seq0loop:
+  53 01 :triosc spawn 08 imulticks idle
+  51 01 :triosc spawn 08 imulticks idle
+  48 01 :triosc spawn 08 imulticks idle
+  46 01 :triosc spawn 08 imulticks idle
+  :seq0loop jmp
+
+seq1:
+  -1 storettl
+seq1loop:
+  36 01 :sineosc spawn 08 imulticks idle
+  41 01 :sineosc spawn 08 imulticks idle
+  39 01 :sineosc spawn 08 imulticks idle
+  36 01 :sineosc spawn 08 imulticks idle
+  :seq1loop jmp
+
+seq2:
+  -1 storettl
+seq2loop:
+  29 01 :sqosc spawn 16 imulticks idle
+  34 01 :sqosc spawn 16 imulticks idle
+  32 01 :sqosc spawn 16 imulticks idle
+  36 01 :sqosc spawn 16 imulticks idle
+  34 01 :sqosc spawn 24 imulticks idle
+  39 01 :sqosc spawn 08 imulticks idle
+  36 01 :sqosc spawn 08 imulticks idle
+  34 01 :sqosc spawn 08 imulticks idle
+  32 01 :sqosc spawn 16 imulticks idle
+  :seq2loop jmp
