@@ -28,7 +28,7 @@ mainloop:
   0.3 fmul
   fclamp
 
-  $delayM imulticks @delayM loadsamplerd
+  $delayM loadglobal @delayM loadsamplerd
   $delayMwet loadglobal fmul fadd
   @delayM storesampler
 
@@ -132,7 +132,7 @@ midi_sqvol: float127 $sqvol storeglobal ret
 midi_delay0wet: float127 $delay0wet storeglobal ret
 midi_delay1wet: float127 $delay1wet storeglobal ret
 midi_delayMwet: float127 $delayMwet storeglobal ret
-midi_delayM: $delayM storeglobal ret
+midi_delayM: float127 fmulticks int $delayM storeglobal ret
 
 seqtri:
   -1 storettl

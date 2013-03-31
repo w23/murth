@@ -121,6 +121,7 @@ void i_iinc(core_t *c) { c->top[0].i++; }
 void i_idec(core_t *c) { c->top[0].i--; }
 void i_imul(core_t *c) { c->top[1].i *= c->top->i; ++c->top; }
 void i_imulticks(core_t *c) { c->top->i *= samples_in_tick; }
+void i_fmulticks(core_t *c) { c->top->f *= samples_in_tick; }
 void i_noise(core_t *c) {
   static int seed = 127; seed *= 16807;
   (--c->top)->i = ((unsigned)seed >> 9) | 0x3f800000u;
@@ -164,7 +165,7 @@ typedef struct {
 instruction_t instructions[] = {
 #define I(name) {#name, i_##name}
   I(load), I(load0), I(load1), I(fload1), I(idle), I(jmp), I(jmpnz), I(yield), I(ret), I(spawn), I(storettl), I(emit),
-  I(loadglobal), I(storeglobal), I(clearglobal), I(faddglobal), I(imulticks),
+  I(loadglobal), I(storeglobal), I(clearglobal), I(faddglobal), I(imulticks), I(fmulticks),
   I(dup), I(get), I(put), I(pop), I(swap), I(swap2),
   I(fsign), I(fadd), I(faddnp), I(fsub), I(fmul), I(fdiv), I(fsin), I(fclamp), I(fphase), I(noise),
   I(in2dp), I(abs),
