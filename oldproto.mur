@@ -2,11 +2,11 @@ _start:
   08 $sinelength storeglobal pop
   08 $trilength storeglobal pop
   08 $sqlength storeglobal pop
-  00 $trivol storeglobal pop
-  00 $sinevol storeglobal pop
-  00 $sqvol storeglobal pop
-  00 $delay0wet storeglobal pop
-  00 $delay1wet storeglobal pop
+  0.50 $trivol storeglobal pop
+  0.50 $sinevol storeglobal pop
+  0.50 $sqvol storeglobal pop
+  0.50 $delay0wet storeglobal pop
+  0.50 $delay1wet storeglobal pop
   04 $delayM storeglobal pop
   00 $delayMwet storeglobal pop
   load0 :seqtri   spawn
