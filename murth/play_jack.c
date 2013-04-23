@@ -19,22 +19,30 @@ int main(int argc, char *argv[]) {
   fseek(fprog, 0, SEEK_END);
   long progsize = ftell(fprog);
   fseek(fprog, 0, SEEK_SET);
-  char *program = malloc(progsize + 1);
-  fread(program, 1, progsize, fprog);
-  program[progsize] = 0;
+  char *source = malloc(progsize + 1);
+  if (progsize != fread(source, 1, progsize, fprog)) {
+    fprintf(stderr, "Failed to read sources\n");
+    return EINVAL;
+  }
+  source[progsize] = 0;
   fclose(fprog);
+
+  murth_program_t program = murth_program_create();
+  if (murth_program_compile(program, source) != 0) {
+    fprintf(stderr, "Failed to compile program\n");
+    return EINVAL;
+  }
 
   int samplerate;
   jack_audio_init(&samplerate);
-  if (murth_init(program, samplerate, 90) != 0) {
-    fprintf(stderr, "Failed to compile program\n");
-    jack_audio_close();
-    return EINVAL;
-  }
-  murth_set_midi_note_handler("midinote", -1, -1);
+  murth_init(samplerate, 120);
+  murth_set_program(program);
+
   fprintf(stderr, "Press q<Enter> to quit.\n");
   jack_audio_start();
   while (getchar() != 'q');
   jack_audio_close();
+
+  murth_program_destroy(program);
   return 0;
 }

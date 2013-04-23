@@ -12,7 +12,6 @@
 #define STACK_SIZE 32
 #define GLOBALS 128
 #define MAX_LABELS 128
-#define MAX_PROGRAM_LENGTH 2048
 #define SAMPLERS 4
 #define MAX_SAMPLER_SIZE_BITS 16
 #define MAX_SAMPLER_SIZE (1 << MAX_SAMPLER_SIZE_BITS)
@@ -20,10 +19,12 @@
 #define MAX_PENDING_EVENTS 32
 
 typedef unsigned char u8;
+
 typedef struct {
   int cursor;
   float samples[MAX_SAMPLER_SIZE];
 } sampler_t;
+
 typedef struct {
   int samples_to_idle;
   int ttl;
@@ -32,12 +33,15 @@ typedef struct {
   var_t stack[STACK_SIZE], *top;
 } core_t;
 typedef void(*instr_func_t)(core_t *c);
-struct {
+
+typedef struct {
   union {
     instr_func_t func;
     int param;
   };
-} program[MAX_PROGRAM_LENGTH];
+} runtime_opcode_t;
+runtime_opcode_t *program;
+
 static int samplerate = 0;
 static int samples_in_tick = 0; 
 static core_t cores[CORES];
@@ -158,21 +162,6 @@ void i_loadsamplerd(core_t *c) {
   ++c->top;
 }
 
-typedef struct {
-  const char *name;
-  instr_func_t func;
-} instruction_t;
-instruction_t instructions[] = {
-#define I(name) {#name, i_##name}
-  I(load), I(load0), I(load1), I(fload1), I(idle), I(jmp), I(jmpnz), I(yield), I(ret), I(spawn), I(storettl), I(emit),
-  I(loadglobal), I(storeglobal), I(clearglobal), I(faddglobal), I(imulticks), I(fmulticks),
-  I(dup), I(get), I(put), I(pop), I(swap), I(swap2),
-  I(fsign), I(fadd), I(faddnp), I(fsub), I(fmul), I(fdiv), I(fsin), I(fclamp), I(fphase), I(noise),
-  I(in2dp), I(abs),
-  I(int), I(int127), I(float127), I(float), I(iadd), I(iinc), I(idec), I(imul),
-  I(storesampler), I(loadsamplerd)
-};
-
 #if defined(DEBUG)
 #undef DEBUG
 #define DEBUG 0
@@ -214,16 +203,26 @@ void murth_synthesize(float *ptr, int count) {
   }
 }
 
-#define MAX_NAME_LENGTH 32
-#define MAX_HANDLERS 16
-#define MAX_FORWARDS (GLOBALS*4)
-typedef struct {
-  char name[MAX_NAME_LENGTH];
-} name_t;
-typedef struct {
-  char name[MAX_NAME_LENGTH];
-  int position;
-} label_t;
+void murth_init(int in_samplerate, int bpm) {
+  current_sample = 0;
+  samplerate = in_samplerate;
+  samples_in_tick = (samplerate * 60) / (16 * bpm);
+
+  // prepare
+  memset(&event_queue, 0, sizeof(event_queue));
+
+  for (int i = 1; i < CORES; ++i)
+    cores[i].pcounter = -1;
+  cores[0].samples_to_idle = 0;
+  cores[0].pcounter = 0;
+  cores[0].ttl = -1;
+  cores[0].top = cores[0].stack + STACK_SIZE - 1;
+}
+
+void murth_set_instruction_limit(int max_per_sample) {
+}
+
+#if 0
 typedef struct {
   int channel, note;
   int address;
@@ -232,209 +231,10 @@ typedef struct {
   int channel, control, value;
   int address;
 } midi_control_handler_t;
-static name_t global_names[GLOBALS-1];
-static name_t sampler_names[SAMPLERS];
-static label_t label_names[GLOBALS];
-static label_t label_forwards[MAX_FORWARDS];
 static midi_note_handler_t note_handlers[MAX_HANDLERS];
 static midi_control_handler_t control_handlers[MAX_HANDLERS];
 static int note_handlers_count;
 static int control_handlers_count;
-
-
-static int get_name(const char *name, name_t *names, int max)
-{
-  for (int i = 0; i < max; ++i) {
-    if (strncmp(name, names[i].name, MAX_NAME_LENGTH) == 0)
-      return i;
-    if (names[i].name[0] == 0) {
-      strcpy(names[i].name, name);
-      return i;
-    }
-  }
-  return -1;
-}
-
-static int get_global(const char *name) {
-  int ret = get_name(name, global_names, GLOBALS - 1) + 1; // 0 is output
-  if (ret == -1) {
-    fprintf(stderr, "cannot allocate slot for global var '%s' -- too many globals\n", name);
-    abort();
-  }
-  return ret;
-}
-
-static int get_sampler(const char *name) {
-  int ret = get_name(name, sampler_names, SAMPLERS);
-  if (ret == -1) {
-    fprintf(stderr, "cannot allocate slot for sampler '%s' -- too many samplers\n", name);
-    abort();
-  }
-  return ret;
-}
-
-static int get_label_address(const char *name, int for_position) {
-  for (int i = 0; i < MAX_LABELS; ++i)
-    if (strncmp(name, label_names[i].name, MAX_NAME_LENGTH) == 0)
-      return label_names[i].position;
-  if (for_position == -1) {
-      fprintf(stderr, "forwarded label '%s' not found\n", name);
-      abort();
-      return -1;
-  }
-  for (int i = 0; i < MAX_FORWARDS; ++i)
-    if (label_forwards[i].name[0] == 0) {
-      strcpy(label_forwards[i].name, name);
-      label_forwards[i].position = for_position;
-      return for_position;
-    }
-  fprintf(stderr, "label '%s' forward @ %d -- too many forwards\n", name, for_position);
-  abort();
-  return -1;
-}
-
-static int set_label(const char *name, int position) {
-  for (int i = 0; i < MAX_LABELS; ++i) {
-    if (strncmp(name, label_names[i].name, MAX_NAME_LENGTH) == 0) {
-      fprintf(stderr, "label '%s' already exists\n", name);
-      abort();
-      return -1;
-    }
-    if (label_names[i].name[0] == 0) {
-      strcpy(label_names[i].name, name);
-      label_names[i].position = position;
-      return i;
-    }
-  }
-  return -1;
-}
-
-static int get_instruction(const char *name) {
-  for (int i = 0; i < sizeof(instructions)/sizeof(*instructions); ++i)
-    if (strcmp(name, instructions[i].name) == 0)
-      return i;
-  fprintf(stderr, "instruction '%s' is not known\n", name);
-  abort();
-  return -1;
-}
-
-int murth_init(const char *assembly, int in_samplerate, int bpm) {
-  current_sample = 0;
-  samplerate = in_samplerate;
-  samples_in_tick = (samplerate * 60) / (16 * bpm);
-
-  // assemble
-  // prepare
-  memset(&event_queue, 0, sizeof(event_queue));
-  memset(global_names, 0, sizeof(global_names));
-  memset(sampler_names, 0, sizeof(sampler_names));
-  memset(label_names, 0, sizeof(label_names));
-  memset(label_forwards, 0, sizeof(label_forwards));
-  note_handlers_count = control_handlers_count = 0;
-
-  int program_counter = 0;
-  const char *tok = assembly, *tokend;
-  for(;*tok != 0;) {
-    while (isspace(*tok)) ++tok;
-    tokend = tok;
-    int typehint = 0;
-#define ALPHA 1
-#define DIGIT 2
-#define DOT 4
-    for (;*tokend != 0;) {
-      if (isspace(*tokend) || *tokend == ';') break;
-      if (isalpha(*tokend)) typehint |= ALPHA;
-      if (isdigit(*tokend)) typehint |= DIGIT;
-      if ('.' == *tokend) typehint |= DOT;
-      ++tokend;
-    }
-    
-    if (*tokend == ';') { // comment
-      while (*tokend != '\n' && *tokend != 0) tokend++; // skip whole remaining line
-      tok = tokend;
-      continue;
-    }
-
-    const long len = tokend - tok;
-    if (len == 0) break;
-
-    char token[MAX_NAME_LENGTH];
-    if (len >= MAX_NAME_LENGTH)
-    {
-      memcpy(token, tok, MAX_NAME_LENGTH-1);
-      token[MAX_NAME_LENGTH-1] = 0;
-      fprintf(stderr, "token '%s...' is too long\n", token);
-      return -1;
-    }
-    memcpy(token, tok, len);
-    token[len] = 0;
-
-    if (len < 2) {
-      fprintf(stderr, "token '%s' is too short\n", token);
-      return -1;
-    }
-
-    L("'%s': %02x\n", token, typehint);
-    
-    if (program_counter >= (MAX_PROGRAM_LENGTH-2)) {
-      fprintf(stderr, "Wow, dude, your program is HUGE!11\n");
-      return -1;
-    }
-
-    if (token[0] == ';') { // comment
-      tokend += strcspn(tokend, "\n");
-    } else if (token[0] == '$') { // global var reference
-      program[program_counter++].func = i_load;
-      program[program_counter++].param= get_global(token);
-    } else if (token[0] == '@') { // sampler reference
-      program[program_counter++].func = i_load;
-      program[program_counter++].param = get_sampler(token);
-    } else if (token[len-1] == ':') { // label definition
-      token[len-1] = 0;
-      set_label(token, program_counter);
-    } else if (token[0] == ':') { // label reference
-      program[program_counter++].func = i_load;
-      int label_position = program_counter;
-      program[program_counter++].param = get_label_address(token+1, label_position);
-    } else if ((typehint&ALPHA) != 0) { // some kind of string reference
-      program[program_counter++].func = instructions[get_instruction(token)].func;
-    } else if ((typehint&(DIGIT|DOT)) == (DIGIT|DOT)) { // float constant (no alpha, but digits with a dot)
-      var_t v;
-      v.f = atof(token);
-      program[program_counter++].func = i_load;
-      program[program_counter++].param = v.i;
-    } else if ((typehint&DIGIT) != 0) { // integer constant (no alpha and no dot, but digits)
-      program[program_counter++].func = i_load;
-      program[program_counter++].param = atoi(token);
-    } else { // something invalid
-      fprintf(stderr, "token '%s' makes no sense\n", token);
-      return -1;
-    }
-    tok = tokend;
-  }
-
-  // patch forwarded labels
-  for (int i = 0; i < MAX_FORWARDS; ++i)
-    if (label_forwards[i].name[0] != 0)
-      program[label_forwards[i].position].param = get_label_address(label_forwards[i].name, -1);
-
-  for (int i = 1; i < CORES; ++i)
-    cores[i].pcounter = -1;
-  cores[0].samples_to_idle = 0;
-  cores[0].pcounter = 0;
-  cores[0].ttl = -1;
-  cores[0].top = cores[0].stack + STACK_SIZE - 1;
-
-/*  for (int i = 0; i < program_counter; ++i) {
-    var_t v; v.i = program[i];
-    const char *fname = (program[i] >= 0 && 
-                         program[i] < sizeof(instructions)/sizeof(*instructions)) ?
-                        instructions[program[i]].name : "%%invalid%";
-    fprintf(stderr, "0x%08x: %08x (%d, %f, <%s>)\n", i, program[i], v.i, v.f, fname);
-  }*/
-
-  return 0;
-}
 
 int murth_set_midi_control_handler(const char *label, int channel, int control, int value) {
   if (control_handlers_count == MAX_HANDLERS) {
@@ -497,14 +297,15 @@ static void run_control(int channel, int control, int value) {
       run_core(&c);
     }
 }
+#endif
 
 void murth_process_raw_midi(const void *packet, int bytes) {
-  const u8 *p = (u8*)packet;
+  /*const u8 *p = (u8*)packet;
   for (int i = 0; i < bytes; ++i)
     switch(p[i] & 0xf0) {
       case 0x90: run_note(p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // note on
       case 0xb0: run_control(p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // control change
-    }
+    }*/
 }
 
 int murth_get_event(murth_event_t *event) {
@@ -515,3 +316,240 @@ int murth_get_event(murth_event_t *event) {
   return 1;
 }
 
+/******************************************************************************
+ * Program section
+ ******************************************************************************/
+
+typedef struct {
+  const char *name;
+  instr_func_t func;
+} instruction_t;
+instruction_t instructions[] = {
+#define I(name) {#name, i_##name}
+  I(load), I(load0), I(load1), I(fload1), I(idle), I(jmp), I(jmpnz), I(yield),
+  I(ret), I(spawn), I(storettl), I(emit),
+  I(loadglobal), I(storeglobal), I(clearglobal), I(faddglobal),
+  I(imulticks), I(fmulticks),
+  I(dup), I(get), I(put), I(pop), I(swap), I(swap2),
+  I(fsign), I(fadd), I(faddnp), I(fsub), I(fmul), I(fdiv), I(fsin), I(fclamp),
+  I(fphase), I(noise),
+  I(in2dp), I(abs),
+  I(int), I(int127), I(float127), I(float), I(iadd), I(iinc), I(idec), I(imul),
+  I(storesampler), I(loadsamplerd)
+#undef I
+};
+
+#define MAX_PROGRAM_LENGTH 16384
+#define MAX_NAME_LENGTH 32
+#define MAX_HANDLERS 16
+#define MAX_FORWARDS (GLOBALS*4)
+typedef struct {
+  char name[MAX_NAME_LENGTH];
+} name_t;
+
+typedef struct {
+  char name[MAX_NAME_LENGTH];
+  int position;
+} label_t;
+
+typedef struct {
+  name_t global_names[GLOBALS-1];
+  name_t sampler_names[SAMPLERS];
+  label_t label_names[GLOBALS];
+  label_t label_forwards[MAX_FORWARDS];
+  runtime_opcode_t program[MAX_PROGRAM_LENGTH];
+} program_t;
+
+static int get_name(const char *name, name_t *names, int max)
+{
+  for (int i = 0; i < max; ++i) {
+    if (strncmp(name, names[i].name, MAX_NAME_LENGTH) == 0)
+      return i;
+    if (names[i].name[0] == 0) {
+      strcpy(names[i].name, name);
+      return i;
+    }
+  }
+  return -1;
+}
+
+static int get_global(program_t *p, const char *name) {
+  int ret = get_name(name, p->global_names, GLOBALS - 1) + 1; // 0 is output
+  if (ret == -1) {
+    fprintf(stderr, "cannot allocate slot for global var '%s' -- too many globals\n", name);
+    abort();
+  }
+  return ret;
+}
+
+static int get_sampler(program_t *p, const char *name) {
+  int ret = get_name(name, p->sampler_names, SAMPLERS);
+  if (ret == -1) {
+    fprintf(stderr, "cannot allocate slot for sampler '%s' -- too many samplers\n", name);
+    abort();
+  }
+  return ret;
+}
+
+static int get_label_address(program_t *p, const char *name, int for_position) {
+  for (int i = 0; i < MAX_LABELS; ++i)
+    if (strncmp(name, p->label_names[i].name, MAX_NAME_LENGTH) == 0)
+      return p->label_names[i].position;
+  if (for_position == -1) {
+      fprintf(stderr, "forwarded label '%s' not found\n", name);
+      abort();
+      return -1;
+  }
+  for (int i = 0; i < MAX_FORWARDS; ++i)
+    if (p->label_forwards[i].name[0] == 0) {
+      strcpy(p->label_forwards[i].name, name);
+      p->label_forwards[i].position = for_position;
+      return for_position;
+    }
+  fprintf(stderr, "label '%s' forward @ %d -- too many forwards\n", name, for_position);
+  abort();
+  return -1;
+}
+
+static int set_label(program_t *p, const char *name, int position) {
+  for (int i = 0; i < MAX_LABELS; ++i) {
+    if (strncmp(name, p->label_names[i].name, MAX_NAME_LENGTH) == 0) {
+      fprintf(stderr, "label '%s' already exists\n", name);
+      abort();
+      return -1;
+    }
+    if (p->label_names[i].name[0] == 0) {
+      strcpy(p->label_names[i].name, name);
+      p->label_names[i].position = position;
+      return i;
+    }
+  }
+  return -1;
+}
+
+static int get_instruction(const char *name) {
+  for (int i = 0; i < sizeof(instructions)/sizeof(*instructions); ++i)
+    if (strcmp(name, instructions[i].name) == 0)
+      return i;
+  fprintf(stderr, "instruction '%s' is not known\n", name);
+  abort();
+  return -1;
+}
+
+murth_program_t murth_program_create() {
+  murth_program_t program = malloc(sizeof(program_t));
+  memset(program, 0, sizeof(program_t));
+  return program;
+}
+
+int murth_program_compile(murth_program_t program, const char *source) {
+  program_t *p = (program_t*)program;
+  int program_counter = 0;
+  const char *tok = source, *tokend;
+  for(;*tok != 0;) {
+    while (isspace(*tok)) ++tok;
+    tokend = tok;
+    int typehint = 0;
+#define ALPHA 1
+#define DIGIT 2
+#define DOT 4
+    for (;*tokend != 0;) {
+      if (isspace(*tokend) || *tokend == ';') break;
+      if (isalpha(*tokend)) typehint |= ALPHA;
+      if (isdigit(*tokend)) typehint |= DIGIT;
+      if ('.' == *tokend) typehint |= DOT;
+      ++tokend;
+    }
+
+    if (*tokend == ';') { // comment
+      while (*tokend != '\n' && *tokend != 0) tokend++; // skip whole remaining line
+      tok = tokend;
+      continue;
+    }
+
+    const long len = tokend - tok;
+    if (len == 0) break;
+
+    char token[MAX_NAME_LENGTH];
+    if (len >= MAX_NAME_LENGTH)
+    {
+      memcpy(token, tok, MAX_NAME_LENGTH-1);
+      token[MAX_NAME_LENGTH-1] = 0;
+      fprintf(stderr, "token '%s...' is too long\n", token);
+      return -1;
+    }
+    memcpy(token, tok, len);
+    token[len] = 0;
+
+    if (len < 2) {
+      fprintf(stderr, "token '%s' is too short\n", token);
+      return -1;
+    }
+
+    L("'%s': %02x\n", token, typehint);
+
+    if (program_counter >= (MAX_PROGRAM_LENGTH-2)) {
+      fprintf(stderr, "Wow, dude, your program is HUGE!11\n");
+      return -1;
+    }
+
+    if (token[0] == ';') { // comment
+      tokend += strcspn(tokend, "\n");
+    } else if (token[0] == '$') { // global var reference
+      p->program[program_counter++].func = i_load;
+      p->program[program_counter++].param= get_global(p, token);
+    } else if (token[0] == '@') { // sampler reference
+      p->program[program_counter++].func = i_load;
+      p->program[program_counter++].param = get_sampler(p, token);
+    } else if (token[len-1] == ':') { // label definition
+      token[len-1] = 0;
+      set_label(p, token, program_counter);
+    } else if (token[0] == ':') { // label reference
+      p->program[program_counter++].func = i_load;
+      int label_position = program_counter;
+      p->program[program_counter++].param = get_label_address(p, token+1, label_position);
+    } else if ((typehint&ALPHA) != 0) { // some kind of string reference
+      p->program[program_counter++].func = instructions[get_instruction(token)].func;
+    } else if ((typehint&(DIGIT|DOT)) == (DIGIT|DOT)) { // float constant (no alpha, but digits with a dot)
+      var_t v;
+      v.f = atof(token);
+      p->program[program_counter++].func = i_load;
+      p->program[program_counter++].param = v.i;
+    } else if ((typehint&DIGIT) != 0) { // integer constant (no alpha and no dot, but digits)
+      p->program[program_counter++].func = i_load;
+      p->program[program_counter++].param = atoi(token);
+    } else { // something invalid
+      fprintf(stderr, "token '%s' makes no sense\n", token);
+      return -1;
+    }
+    tok = tokend;
+  }
+
+  // patch forwarded labels
+  for (int i = 0; i < MAX_FORWARDS; ++i)
+    if (p->label_forwards[i].name[0] != 0)
+      p->program[p->label_forwards[i].position].param = get_label_address(p, p->label_forwards[i].name, -1);
+
+
+/*  for (int i = 0; i < program_counter; ++i) {
+    var_t v; v.i = program[i];
+    const char *fname = (program[i] >= 0 &&
+                         program[i] < sizeof(instructions)/sizeof(*instructions)) ?
+                        instructions[program[i]].name : "%%invalid%";
+    fprintf(stderr, "0x%08x: %08x (%d, %f, <%s>)\n", i, program[i], v.i, v.f, fname);
+  }*/
+
+  return 0;
+}
+
+const char *murth_program_get_status(murth_program_t program) {
+  return "ERROR: NOT IMPLEMENTED";
+}
+
+void murth_program_destroy(murth_program_t program) {
+  free(program);
+}
+
+void murth_set_program(murth_program_t prog) {
+  program = ((program_t*)prog)->program;
+}
