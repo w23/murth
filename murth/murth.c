@@ -1,6 +1,3 @@
-//! \fixme apple-specific
-//#include <libkern/OSAtomic.h>
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -438,12 +435,12 @@ static int get_instruction(const char *name) {
 
 murth_program_t murth_program_create() {
   murth_program_t program = malloc(sizeof(program_t));
-  memset(program, 0, sizeof(program_t));
   return program;
 }
 
 int murth_program_compile(murth_program_t program, const char *source) {
   program_t *p = (program_t*)program;
+  memset(program, 0, sizeof(program_t));
   int program_counter = 0;
   const char *tok = source, *tokend;
   for(;*tok != 0;) {

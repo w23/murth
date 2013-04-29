@@ -3,9 +3,10 @@
 extern "C" {
 #endif
 
+//! murth opaque program type
 typedef void *murth_program_t;
 
-//!
+//! unified float + int value
 typedef struct {
   union {
     int i;
@@ -13,37 +14,72 @@ typedef struct {
   };
 } var_t;
 
+//! event event
 typedef struct {
+  //! sample number that this event was generated on
   int samplestamp;
-  int event;
-  var_t value;
+  //! event type
+  int type;
+  //! event values
+  var_t value1, value2;
 } murth_event_t;
 
+//! \attention murth_* functions are not thread safe, except where stated otherwise
+
+//! creates an unitialized program
 extern murth_program_t murth_program_create();
-extern int murth_program_compile(murth_program_t program,
-                                 const char *source);
-extern const char *murth_program_get_status(murth_program_t program);
+
+//! resets program and initializes it by compiling the source
+//! \returns 0 on success, any other value is a number of a line where the
+//! first spotted error occured (beginning with 1, not 0, obviously)
+extern int murth_program_compile(murth_program_t program, const char *source);
+
+//! get an extended error description. no more chars than buffer_size are written
+extern void murth_program_get_error(murth_program_t program,
+                                    char *buffer, int buffer_size);
+
+//! get a list of custom keywords/instructions/functions that were declared
+//! in this program one by one.
+//! \returns string name of a custom instruction, or 0 for index > count_keywords
+extern const char *murth_program_get_custom_keyword(murth_program_t program, int index);
+
+//! destroy a program that is not needed anymore
 extern void murth_program_destroy(murth_program_t program);
 
-extern void murth_init(int samplerate, int bpm);
+//! resets murth to a clean state, with no program and no active cores
+//! samplerate and bpm are preserved
+extern void murth_reset();
+
+//! set samplerate (must be before set_bpm)
+extern void murth_set_samplerate(int samplerate);
+
+//! set BPM. must be before set_program and
+extern void murth_set_bpm(int bpm);
+
+//! get a list of compiled-in instructions.
+extern const char *murth_get_keyword(murth_program_t program, int index);
+
+//! set program and start running it with one core (on next synthesize)
 extern void murth_set_program(murth_program_t prog);
+
+//! set max number of instructions to run per sample
+//! this is in order to avoid overload and forever loops
 extern void murth_set_instruction_limit(int max_per_sample);
+
+//! generate next samples block
+//! does nothing if program is not set
 extern void murth_synthesize(float* ptr, int count);
+
+//! get next generated event
+//! \param event pointer to event structure to be filled
+//! \returns number of remaining events available (plus this one)
+//! \attention this function is thread safe assuming you call it from just one thread simultaneously
 extern int murth_get_event(murth_event_t *event);
 
-// broken atm
-#if 0
-//! must be called after init
-//! -1 means for everything
-//! prioritized -- first matched gets to handle
-//! stack: (top)value, control, channel
-extern int murth_set_midi_control_handler(const char *label, int channel, int control, int value);
-//! stack: (top)note, velocity, channel
-extern int murth_set_midi_note_handler(const char *label, int channel, int note);
-#endif
-
-//! must be called from teh same thread as synthesize
-//! midi stream is assumed to be valid
+//! process raw midi stream
+//! \attention this function is assumed to be called not more from than one thread
+//! simultaneously, but the thread is not required to be the same as for synthesizing
+//! \attention midi stream data is assumed to be valid
 extern void murth_process_raw_midi(const void *packet, int bytes);
 
 #ifdef __cplusplus
