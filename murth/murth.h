@@ -24,7 +24,7 @@ typedef struct {
   var_t value1, value2;
 } murth_event_t;
 
-//! \attention murth_* functions are not thread safe, except where stated otherwise
+//! \attention murth_* functions are not thread-safe, except where stated otherwise
 
 //! creates an unitialized program
 extern murth_program_t murth_program_create();
