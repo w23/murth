@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include "nyatomic.h"
 #include "murth.h"
 
 #define CORES 16
@@ -14,6 +15,10 @@
 #define MAX_SAMPLER_SIZE (1 << MAX_SAMPLER_SIZE_BITS)
 #define MAX_SAMPLER_SIZE_MASK (MAX_SAMPLER_SIZE - 1)
 #define MAX_PENDING_EVENTS 32
+#define MAX_PROGRAM_LENGTH 16384
+#define MAX_NAME_LENGTH 32
+#define MAX_HANDLERS 16
+#define MAX_FORWARDS (GLOBALS*4)
 
 typedef unsigned char u8;
 
@@ -32,23 +37,77 @@ typedef struct {
 typedef void(*instr_func_t)(core_t *c);
 
 typedef struct {
+  char name[MAX_NAME_LENGTH];
+} name_t;
+
+typedef struct {
+  char name[MAX_NAME_LENGTH];
+  int position;
+} label_t;
+
+typedef struct {
   union {
+#if DEBUG
+    int instr_index;
+#endif
     instr_func_t func;
     int param;
   };
 } runtime_opcode_t;
-runtime_opcode_t *program;
 
-static int samplerate = 0;
-static int samples_in_tick = 0; 
+typedef struct {
+  int midi_cc_handler;
+  int midi_note_handler;
+  name_t global_names[GLOBALS-1];
+  name_t sampler_names[SAMPLERS];
+  label_t label_names[GLOBALS];
+  label_t label_forwards[MAX_FORWARDS];
+  runtime_opcode_t program[MAX_PROGRAM_LENGTH];
+} program_t;
+
+enum message_type_e {
+  Reset,
+  SetProgram,
+  SetBPM,
+  SetInstructionLimit
+};
+
+typedef struct {
+  int type;
+  int param;
+  const void *ptr; // 64-bitness
+  int dummy[2]; // not to be used
+} murth_control_message_t;
+
+static int running = -1;
+static int samplerate;
+static int samples_in_tick;
+static int instruction_limit = 1024;
+static int current_sample;
+static int current_sample_instructions;
 static core_t cores[CORES];
 static var_t globals[GLOBALS];
 static sampler_t samplers[SAMPLERS];
-static struct {
-  int writepos, readpos;
-  murth_event_t events[MAX_PENDING_EVENTS];
-} event_queue;
-static int current_sample;
+static nya_stream_t sin_midi;
+static nya_stream_t sout_events;
+static nya_stream_t sin_messages;
+static int midi_cc_handler;
+static int midi_note_handler;
+static const runtime_opcode_t *program;
+
+static core_t *spawn_core(int pcounter, int argc, const var_t *argv) {
+  for (int i = 0; i < CORES; ++i)
+    if (cores[i].pcounter < 0) {
+      core_t *nc = cores + i;
+      nc->samples_to_idle = 0;
+      nc->ttl = 1;
+      nc->pcounter = pcounter;
+      nc->top = nc->stack + STACK_SIZE - argc;
+      memcpy(nc->top, argv, sizeof(var_t) * argc);
+      return nc;
+    }
+  return NULL;
+}
 
 void i_load(core_t *c) { (--c->top)->i = program[c->pcounter++].param; }
 void i_load0(core_t *c) { (--c->top)->i = 0; }
@@ -57,25 +116,14 @@ void i_fload1(core_t *c) { (--c->top)->f = 1.f; }
 void i_idle(core_t *c) { c->samples_to_idle = (c->top++)->i + 1; }
 void i_jmp(core_t *c) { c->pcounter = (c->top++)->i; }
 void i_jmpnz(core_t *c) {
-  if (c->top[1].i != 0) {
-    c->pcounter = c->top[0].i;
-  }
+  if (c->top[1].i != 0) c->pcounter = c->top[0].i;
   c->top += 2;
 }
 void i_yield(core_t *c) { c->samples_to_idle = 1; }
 void i_ret(core_t *c) { c->pcounter = -1, c->samples_to_idle = 1; }
 void i_spawn(core_t *c) {
   const int args = c->top[1].i;
-  for (int i = 0; i < CORES; ++i)
-    if (cores[i].pcounter < 0) {
-      core_t *nc = cores + i;
-      nc->samples_to_idle = 0;
-      nc->ttl = 1;
-      nc->pcounter = c->top[0].i;
-      nc->top = nc->stack + STACK_SIZE - args;
-      memcpy(nc->top, c->top + 2, sizeof(var_t) * args);
-      break;
-    }
+  spawn_core(c->top[0].i, args, c->top + 2);
   c->top += 2 + args;
 }
 void i_storettl(core_t *c) { c->ttl = c->top[0].i, ++c->top; }
@@ -112,7 +160,9 @@ void i_in2dp(core_t *c) {
   int n = c->top->i;
   float kht = 1.059463f; //2^(1/12)
   float f = 55.f / (float)samplerate;
-  while(--n>=0) f *= kht; // cheap pow!
+// 'cheap' pow!
+  while(n >= 12) { f *= 2; n -= 12; }
+  while(--n>=0) f *= kht; 
   c->top->f = f;
 }
 void i_float127(core_t *c) { c->top->f = c->top->i / 127.f; }
@@ -130,19 +180,11 @@ void i_noise(core_t *c) {
 }
 void i_abs(core_t *c) { c->top->i &= 0x7fffffff; }
 void i_emit(core_t *c) {
-  if (event_queue.readpos == event_queue.readpos) {
-    event_queue.writepos = 0;
-    //OSMemoryBarrier();
-    event_queue.readpos = 0;
-  }
-  if (event_queue.writepos < MAX_PENDING_EVENTS) {
-    event_queue.events[event_queue.writepos].samplestamp = current_sample;
-    event_queue.events[event_queue.writepos].value = c->top[0];
-    event_queue.events[event_queue.writepos].event = c->top[1].i;
-    //OSAtomicIncrement32Barrier(&event_queue.writepos);
-    //OSMemoryBarrier();
-    ++event_queue.writepos;
-  }
+  murth_event_t event;
+  event.samplestamp = current_sample;
+  event.value[0] = c->top[0];
+  event.type = c->top[1].i;
+  nya_stream_write(&sout_events, &event, 1);
   c->top += 2;
 }
 void i_storesampler(core_t *c) {
@@ -151,18 +193,16 @@ void i_storesampler(core_t *c) {
   s->cursor = (s->cursor + 1) & MAX_SAMPLER_SIZE_MASK;
   ++c->top;
 }
-//void i_loadsampler(core_t *c) {
-//}
-void i_loadsamplerd(core_t *c) {
+void i_loadsampler(core_t *c) {
   sampler_t *s = samplers + c->top[0].i;
   c->top[1].f = s->samples[(s->cursor - c->top[1].i) & MAX_SAMPLER_SIZE_MASK];
   ++c->top;
 }
 
-#if defined(DEBUG)
-#undef DEBUG
-#define DEBUG 0
-#endif
+//#if defined(DEBUG)
+//#undef DEBUG
+//#define DEBUG 0
+//#endif
 #if DEBUG
 #define L(...) fprintf(stderr, __VA_ARGS__);
 void coredump(core_t *c) {
@@ -182,6 +222,7 @@ static void run_core(core_t *c) {
     L("core %p:\n", c);
     while(c->samples_to_idle <= 0) {
       COREDUMP(c);
+      if (current_sample_instructions++ >= instruction_limit) return;
       c->samples_to_idle = 0;
       program[c->pcounter++].func(c);
     }
@@ -191,32 +232,114 @@ static void run_core(core_t *c) {
   }
 }
 
-void murth_synthesize(float *ptr, int count) {
+static void reset() {
+  current_sample = 0;
+  for (int i = 0; i < CORES; ++i) cores[i].pcounter = -1;
+  if (program != NULL) spawn_core(0, 0, NULL);
+  running = 0;
+}
+
+static int process_message(murth_control_message_t *msg) {
+  switch(msg->type) {
+    case SetProgram:
+      if (msg->ptr != NULL) {
+        const program_t *p =(const program_t*)(msg->ptr);
+        program = p->program;
+        midi_cc_handler = p->midi_cc_handler;
+        midi_note_handler = p->midi_note_handler;
+        reset();
+      } else {
+        program = NULL;
+        midi_cc_handler = midi_note_handler = -1;
+      }
+    case Reset:
+      reset();
+      break;
+    case SetBPM:
+      samples_in_tick = (samplerate * 60) / (16 * msg->param);
+      break;
+    case SetInstructionLimit:
+      instruction_limit = msg->param;
+      break;
+    default:
+      return 0;
+  }
+  return 1;
+}
+
+static int send_message(int type, int param, void *ptr) {
+  murth_control_message_t msg;
+  msg.type = type;
+  msg.param = param;
+  msg.ptr = ptr;
+  if (running == 1) return nya_stream_write(&sin_messages, &msg, 1);
+  else return process_message(&msg);
+}
+
+static void process_messages() {
+  murth_control_message_t msg;
+  while (1 == nya_stream_read(&sin_messages, &msg, 1)) process_message(&msg);
+}
+
+/* \todo
+static void run_note(int channel, int note, int velocity) {
+  if (midi_note_handler == -1) return;
+  var_t params[3];
+  params[0].i = note; params[1].i = velocity; params[2].i = channel;
+  spawn_core(midi_note_handler, 3, params);
+}
+
+static void run_control(int channel, int control, int value) {
+  if (midi_cc_handler == -1) return;
+  var_t params[3];
+  params[0].i = value; params[1].i = control; params[2].i = channel;
+  spawn_core(midi_note_handler, 3, params);
+}
+*/
+
+static void process_midi_stream() {
+  /* \todo const u8 *p = (u8*)packet;
+  for (int i = 0; i < bytes-2; ++i)
+    switch(p[i] & 0xf0) {
+      case 0x90: run_note(p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // note on
+      case 0xb0: run_control(p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // control change
+    }*/
+}
+
+int murth_synthesize(float *ptr, int count) {
+  if (running == -1) return 0;
+  running = 1;
+  process_messages();
+  process_midi_stream();
   for (int i = 0; i < count; ++i) {
+    current_sample_instructions = 0;
     globals[0].i = 0;
     for (int j = CORES - 1; j >= 0; --j) run_core(cores + j);
     ptr[i] = globals[0].f;
     ++current_sample;
   }
+  return current_sample;
 }
 
-void murth_init(int in_samplerate, int bpm) {
-  current_sample = 0;
+void murth_init(int in_samplerate) {
   samplerate = in_samplerate;
-  samples_in_tick = (samplerate * 60) / (16 * bpm);
+  program = 0;
+  nya_stream_init(&sin_midi);
+  nya_stream_init(&sout_events);
+  nya_stream_init(&sin_messages);
+  reset();
+}
 
-  // prepare
-  memset(&event_queue, 0, sizeof(event_queue));
+void murth_set_bpm(int bpm) {
+  send_message(SetBPM, bpm, NULL);
+}
 
-  for (int i = 1; i < CORES; ++i)
-    cores[i].pcounter = -1;
-  cores[0].samples_to_idle = 0;
-  cores[0].pcounter = 0;
-  cores[0].ttl = -1;
-  cores[0].top = cores[0].stack + STACK_SIZE - 1;
+void murth_set_program(murth_program_t prog) {
+  send_message(SetProgram, 0, prog);
 }
 
 void murth_set_instruction_limit(int max_per_sample) {
+  send_message(SetInstructionLimit, max_per_sample, NULL);
 }
 
 #if 0
@@ -262,55 +385,23 @@ int murth_set_midi_note_handler(const char *label, int channel, int note) {
   h->channel = channel; h->note = note;
   return note_handlers_count++;
 }
-
-static void run_note(int channel, int note, int velocity) {
-  for (int i = 0; i < note_handlers_count; ++i)
-    if (note_handlers[i].address >= 0 &&
-      (note_handlers[i].channel == -1 || note_handlers[i].channel == channel) &&
-      (note_handlers[i].note == -1 || note_handlers[i].note == note)) {
-      core_t c;
-      c.samples_to_idle = 0;
-      c.pcounter = note_handlers[i].address;
-      c.top = c.stack + STACK_SIZE - 4;
-      c.top[0].i = note, c.top[1].i = velocity, c.top[2].i = channel;
-      run_core(&c);
-    }
-}
-
-static void run_control(int channel, int control, int value) {
-  for (int i = 0; i < control_handlers_count; ++i)
-    if (control_handlers[i].address >= 0 &&
-      (control_handlers[i].channel == -1
-       || control_handlers[i].channel == channel) &&
-      (control_handlers[i].control == -1
-       || control_handlers[i].control == control) &&
-      (control_handlers[i].value == -1
-       || control_handlers[i].value == value)) {
-      core_t c;
-      c.samples_to_idle = 0;
-      c.pcounter = control_handlers[i].address;
-      c.top = c.stack + STACK_SIZE - 4;
-      c.top[0].i = value, c.top[1].i = control, c.top[2].i = channel;
-      run_core(&c);
-    }
-}
 #endif
 
+
 void murth_process_raw_midi(const void *packet, int bytes) {
-  /*const u8 *p = (u8*)packet;
-  for (int i = 0; i < bytes; ++i)
-    switch(p[i] & 0xf0) {
-      case 0x90: run_note(p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // note on
-      case 0xb0: run_control(p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // control change
-    }*/
+  const int full_chunks = bytes / NYA_STREAM_CHUNK_SIZE;
+  nya_stream_write(&sin_midi, packet, full_chunks);
+  const int left_bytes = bytes % NYA_STREAM_CHUNK_SIZE;
+  if (left_bytes > 0) {
+    const char *p = (const char*)packet + full_chunks * NYA_STREAM_CHUNK_SIZE;
+    nya_chunk_t chunk;
+    memcpy(&chunk, p, left_bytes);
+    nya_stream_write(&sin_midi, &chunk, 1);
+  }
 }
 
 int murth_get_event(murth_event_t *event) {
-  if (event_queue.readpos >= event_queue.writepos)
-    return 0;
-  memcpy(event, event_queue.events + event_queue.readpos, sizeof(*event));
-  ++event_queue.readpos;
-  return 1;
+  return nya_stream_read(&sout_events, event, 1);
 }
 
 /******************************************************************************
@@ -332,30 +423,10 @@ instruction_t instructions[] = {
   I(fphase), I(noise),
   I(in2dp), I(abs),
   I(int), I(int127), I(float127), I(float), I(iadd), I(iinc), I(idec), I(imul),
-  I(storesampler), I(loadsamplerd)
+  I(storesampler), I(loadsampler)
 #undef I
 };
 
-#define MAX_PROGRAM_LENGTH 16384
-#define MAX_NAME_LENGTH 32
-#define MAX_HANDLERS 16
-#define MAX_FORWARDS (GLOBALS*4)
-typedef struct {
-  char name[MAX_NAME_LENGTH];
-} name_t;
-
-typedef struct {
-  char name[MAX_NAME_LENGTH];
-  int position;
-} label_t;
-
-typedef struct {
-  name_t global_names[GLOBALS-1];
-  name_t sampler_names[SAMPLERS];
-  label_t label_names[GLOBALS];
-  label_t label_forwards[MAX_FORWARDS];
-  runtime_opcode_t program[MAX_PROGRAM_LENGTH];
-} program_t;
 
 static int get_name(const char *name, name_t *names, int max)
 {
@@ -506,6 +577,9 @@ int murth_program_compile(murth_program_t program, const char *source) {
       int label_position = program_counter;
       p->program[program_counter++].param = get_label_address(p, token+1, label_position);
     } else if ((typehint&ALPHA) != 0) { // some kind of string reference
+#if DEBUG
+      p->program[program_counter].instr_index = get_instruction(token);
+#endif
       p->program[program_counter++].func = instructions[get_instruction(token)].func;
     } else if ((typehint&(DIGIT|DOT)) == (DIGIT|DOT)) { // float constant (no alpha, but digits with a dot)
       var_t v;
@@ -527,14 +601,15 @@ int murth_program_compile(murth_program_t program, const char *source) {
     if (p->label_forwards[i].name[0] != 0)
       p->program[p->label_forwards[i].position].param = get_label_address(p, p->label_forwards[i].name, -1);
 
-
-/*  for (int i = 0; i < program_counter; ++i) {
-    var_t v; v.i = program[i];
-    const char *fname = (program[i] >= 0 &&
-                         program[i] < sizeof(instructions)/sizeof(*instructions)) ?
-                        instructions[program[i]].name : "%%invalid%";
-    fprintf(stderr, "0x%08x: %08x (%d, %f, <%s>)\n", i, program[i], v.i, v.f, fname);
-  }*/
+#if DEBUG
+  for (int i = 0; i < program_counter; ++i) {
+    var_t v; v.i = p->program[i].instr_index;
+    const char *fname = (v.i >= 0 &&
+                         v.i < sizeof(instructions)/sizeof(*instructions)) ?
+                        instructions[v.i].name : "%%invalid%%";
+    fprintf(stderr, "0x%08x: %08x (%d, %f, <%s>)\n", i, v.i, v.i, v.f, fname);
+  }
+#endif
 
   return 0;
 }
@@ -547,6 +622,3 @@ void murth_program_destroy(murth_program_t program) {
   free(program);
 }
 
-void murth_set_program(murth_program_t prog) {
-  program = ((program_t*)prog)->program;
-}

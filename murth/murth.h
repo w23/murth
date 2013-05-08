@@ -21,7 +21,7 @@ typedef struct {
   //! event type
   int type;
   //! event values
-  var_t value1, value2;
+  var_t value[2];
 } murth_event_t;
 
 //! \attention murth_* functions are not thread-safe, except where stated otherwise
@@ -42,33 +42,34 @@ extern void murth_program_get_error(murth_program_t program,
 //! in this program one by one.
 //! \returns string name of a custom instruction, or 0 for index > count_keywords
 extern const char *murth_program_get_custom_keyword(murth_program_t program, int index);
+//! \todo: labels, label references, any references
 
 //! destroy a program that is not needed anymore
 extern void murth_program_destroy(murth_program_t program);
 
-//! resets murth to a clean state, with no program and no active cores
-//! samplerate and bpm are preserved
-extern void murth_reset();
 
-//! set samplerate (must be before set_bpm)
-extern void murth_set_samplerate(int samplerate);
-
-//! set BPM. must be before set_program and
-extern void murth_set_bpm(int bpm);
-
-//! get a list of compiled-in instructions.
+//! (static) get a list of compiled-in instructions
 extern const char *murth_get_keyword(murth_program_t program, int index);
 
-//! set program and start running it with one core (on next synthesize)
+
+//! init murth to a clean state, with no program and no active cores
+//! \param samplerate intended samplerate
+extern void murth_init(int samplerate);
+
+//! (message) set BPM
+extern void murth_set_bpm(int bpm);
+
+//! (message) set program and reset to one core running from the beginning
 extern void murth_set_program(murth_program_t prog);
 
-//! set max number of instructions to run per sample
+//! (message) set max number of instructions to run per sample
 //! this is in order to avoid overload and forever loops
 extern void murth_set_instruction_limit(int max_per_sample);
 
 //! generate next samples block
-//! does nothing if program is not set
-extern void murth_synthesize(float* ptr, int count);
+//! does nothing if the program is not set
+//! \returns samplestamp of the last written sample
+extern int murth_synthesize(float* ptr, int count);
 
 //! get next generated event
 //! \param event pointer to event structure to be filled

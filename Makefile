@@ -1,6 +1,7 @@
 include common.mk
 
 SOURCES := \
+	murth/nyatomic.c \
 	murth/jack.c \
 	murth/murth.c \
 	vismurth/visuport.cpp \
@@ -21,8 +22,8 @@ DEPS=Makefile common.mk
 vismurth_bin: $(DEPS) $(MODULES) 3p/kapusha/libkapusha.a
 	$(LD) $(LDFLAGS) $(MODULES) -L3p/kapusha -lkapusha -o vismurth_bin
 
-play: $(DEPS) murth/murth.o murth/play_jack.o murth/jack.o
-	$(LD) $(LDFLAGS) murth/murth.o murth/play_jack.o murth/jack.o -o play
+play: $(DEPS) murth/murth.o murth/play_jack.o murth/jack.o murth/nyatomic.o
+	$(LD) $(LDFLAGS) murth/murth.o murth/play_jack.o murth/jack.o murth/nyatomic.o -o play
 
 test: $(DEPS) murth/murth.o murth/test.o
 	$(LD) $(LDFLAGS) murth/murth.o murth/test.o -o test
@@ -31,7 +32,7 @@ test: $(DEPS) murth/murth.o murth/test.o
 	make -j5 -C 3p/kapusha
 
 clean:
-	@rm -rf $(MODULES) vismurth
+	@rm -f $(MODULES)
 
 deepclean: clean
 	@make -C 3p/kapusha clean

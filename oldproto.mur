@@ -15,12 +15,12 @@ _start:
 mainloop:
   
   $notes0 loadglobal
-  12 imulticks @notes0delay loadsamplerd
+  12 imulticks @notes0delay loadsampler
   $delay0wet loadglobal fmul fadd
   @notes0delay storesampler
   
   $notes1 loadglobal
-  24 imulticks @notes1delay loadsamplerd
+  24 imulticks @notes1delay loadsampler
   $delay1wet loadglobal fmul fadd
   @notes1delay storesampler
   
@@ -28,7 +28,7 @@ mainloop:
   0.3 fmul
   fclamp
 
-  $delayM loadglobal @delayM loadsamplerd
+  $delayM loadglobal @delayM loadsampler
   $delayMwet loadglobal fmul fadd
   @delayM storesampler
 

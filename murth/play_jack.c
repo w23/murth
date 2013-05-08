@@ -35,7 +35,8 @@ int main(int argc, char *argv[]) {
 
   int samplerate;
   jack_audio_init(&samplerate);
-  murth_init(samplerate, 120);
+  murth_init(samplerate);
+  murth_set_bpm(120);
   murth_set_program(program);
 
   fprintf(stderr, "Press q<Enter> to quit.\n");
