@@ -7,11 +7,15 @@
 extern "C" {
 #endif
 
-//! init murth to a clean state, with no program and no active cores
-//! \param samplerate intended samplerate
+//! \brief Init murth to a clean state, with no program and no active cores.
+//! \param samplerate Intended samplerate.
 void murth_init(int samplerate);
 
-//! (message) set BPM
+//! \brief Set new BPM.
+//! Sets internal tick value to a new one according to new BPM.
+//! If murth is running, sends an asynchronous message, so the change actually
+//! happens in the beginning of a closest murth_synthesize() call
+//! \param bpm New BPM value.
 void murth_set_bpm(int bpm);
 
 //! (message) set program and reset to one core running from the beginning
@@ -37,6 +41,9 @@ int murth_get_event(murth_event_t *event);
 //! simultaneously, but the thread is not required to be the same as for synthesizing
 //! \attention midi stream data is assumed to be valid
 void murth_process_raw_midi(const void *packet, int bytes);
+
+//! \todo Debug connection to read technical events, errors and warnings.
+//! \todo Tap connection to get raw samples from user-specified points.
 
 #ifdef __cplusplus
 }

@@ -5,33 +5,27 @@
 extern "C" {
 #endif
 
-//! some entity name
+//! Some entity name.
 typedef struct {
   char name[MAX_NAME_LENGTH];
 } murth_name_t;
 
-//! label that we can jump to
+//! Label that can be jumped to.
 typedef struct {
-  //! name
-  char name[MAX_NAME_LENGTH];
-  //! bytecode address
-  int position;
+  char name[MAX_NAME_LENGTH]; //!< Label name
+  int position; //!< Bytecode address, in basic ops
 } murth_label_t;
 
+//! Program description.
+//! \attention Not intended for external manipulation! Read-only!
+//! \attention The internals are made public only for live-editing aid.
 typedef struct {
-  //! global variables
-  murth_name_t global_names[GLOBALS-1];
-  //! samplers
-  murth_name_t sampler_names[SAMPLERS];
-  //! label declarations
-  murth_label_t label_names[GLOBALS];
-  //! labels references before declaration
-  //! \todo merge with ordinary labels
-  murth_label_t label_forwards[MAX_FORWARDS];
-  //! compiled program
-  murth_op_t program[MAX_PROGRAM_LENGTH];
-  //! program length
-  int length;
+  murth_name_t global_names[GLOBALS-1]; //!< Array of allocated global variables. Index equals to actual global slot.
+  murth_name_t sampler_names[SAMPLERS]; //!< Array of allocated samplers. Index equals to actual sampler unit.
+  murth_label_t label_names[GLOBALS]; //!< Array of declared labels.
+  murth_label_t label_forwards[MAX_FORWARDS]; //!< Array of accessed, but not yet declared labels. \todo Get rid of this kludge.
+  murth_op_t program[MAX_PROGRAM_LENGTH]; //!< Compiled program "bytecode"
+  int length; //!< Count of operations in compiled bytecode
   //! address of a midi control handler routine
   //! determined automatically: set to label named "midi_cc:"
   int midi_cc_handler;
@@ -48,12 +42,12 @@ typedef struct {
   } error;
 } murth_program_t;
 
-//! resets program and initializes it by compiling the source
-//! \param program program to initialize and compile to
-//! \param source source assembly code
+//! Resets program and initializes it by compiling the source.
+//! \param program Program object to initialize and compile to.
+//! \param source Source assembly code.
 //! \returns 0 on success,
-//! \returns any other value is an error code and program->error contains descritpion
-//! \todo define error codes
+//! \returns Any other value is an error code and program->error contains descritpion
+//! \todo Define program compilation error codes.
 int murth_program_compile(murth_program_t *program, const char *source);
 
 #ifdef __cplusplus

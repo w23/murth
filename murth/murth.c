@@ -138,6 +138,7 @@ static void run_control(int channel, int control, int value) {
 */
 
 static void process_midi_stream() {
+  //! \fixme DO process midi stream. Useless without it.
   /* \todo const u8 *p = (u8*)packet;
   for (int i = 0; i < bytes-2; ++i)
     switch(p[i] & 0xf0) {
