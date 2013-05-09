@@ -27,8 +27,8 @@ int main(int argc, char *argv[]) {
   source[progsize] = 0;
   fclose(fprog);
 
-  murth_program_t program = murth_program_create();
-  if (murth_program_compile(program, source) != 0) {
+  murth_program_t program;
+  if (murth_program_compile(&program, source) != 0) {
     fprintf(stderr, "Failed to compile program\n");
     return EINVAL;
   }
@@ -37,13 +37,12 @@ int main(int argc, char *argv[]) {
   jack_audio_init(&samplerate);
   murth_init(samplerate);
   murth_set_bpm(120);
-  murth_set_program(program);
+  murth_set_program(&program);
 
   fprintf(stderr, "Press q<Enter> to quit.\n");
   jack_audio_start();
   while (getchar() != 'q');
   jack_audio_close();
 
-  murth_program_destroy(program);
   return 0;
 }
