@@ -1,4 +1,5 @@
 _start:
+  -1 storettl
   08 $sinelength storeglobal pop
   08 $trilength storeglobal pop
   08 $sqlength storeglobal pop
