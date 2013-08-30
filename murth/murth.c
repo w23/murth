@@ -121,30 +121,24 @@ static void process_messages() {
   while (1 == nya_stream_read(&sin_messages, &msg, 1)) process_message(&msg);
 }
 
-/* \todo
-static void run_note(int channel, int note, int velocity) {
+static void run_note(int sync, int channel, int note, int velocity) {
+  if (sync == 0) return; /// \todo implement async midi
   if (midi_note_handler == -1) return;
   murth_var_t params[3];
   params[0].i = note; params[1].i = velocity; params[2].i = channel;
   spawn_core(midi_note_handler, 3, params);
 }
 
-static void run_control(int channel, int control, int value) {
+static void run_control(int sync, int channel, int control, int value) {
+  if (sync == 0) return; /// \todo implement async midi
   if (midi_cc_handler == -1) return;
   murth_var_t params[3];
   params[0].i = value; params[1].i = control; params[2].i = channel;
-  spawn_core(midi_note_handler, 3, params);
+  spawn_core(midi_cc_handler, 3, params);
 }
-*/
 
 static void process_midi_stream() {
   //! \fixme DO process midi stream. Useless without it.
-  /* \todo const u8 *p = (u8*)packet;
-  for (int i = 0; i < bytes-2; ++i)
-    switch(p[i] & 0xf0) {
-      case 0x90: run_note(p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // note on
-      case 0xb0: run_control(p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // control change
-    }*/
 }
 
 int murth_synthesize(float *ptr, int count) {
@@ -183,16 +177,25 @@ void murth_set_instruction_limit(int max_per_sample) {
   send_message(SetInstructionLimit, max_per_sample, NULL);
 }
 
-void murth_process_raw_midi(const void *packet, int bytes) {
-  const int full_chunks = bytes / NYA_STREAM_CHUNK_SIZE;
-  nya_stream_write(&sin_midi, packet, full_chunks);
-  const int left_bytes = bytes % NYA_STREAM_CHUNK_SIZE;
-  if (left_bytes > 0) {
-    const char *p = (const char*)packet + full_chunks * NYA_STREAM_CHUNK_SIZE;
-    nya_chunk_t chunk;
-    memcpy(&chunk, p, left_bytes);
-    nya_stream_write(&sin_midi, &chunk, 1);
-  }
+void murth_process_raw_midi(const void *packet, int bytes, int sync) {
+  const u8 *p = (u8*)packet;
+  for (int i = 0; i < bytes-2; ++i)
+    switch(p[i] & 0xf0) {
+      case 0x90:
+	run_note(sync, p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // note on
+      case 0xb0:
+	run_control(sync, p[i] & 0x0f, p[i+1], p[i+2]); i += 2; break; // control change
+    }
+
+  /*  const int full_chunks = bytes / NYA_STREAM_CHUNK_SIZE;
+    nya_stream_write(&sin_midi, packet, full_chunks);
+    const int left_bytes = bytes % NYA_STREAM_CHUNK_SIZE;
+    if (left_bytes > 0) {
+      const char *p = (const char*)packet + full_chunks * NYA_STREAM_CHUNK_SIZE;
+      nya_chunk_t chunk;
+      memcpy(&chunk, p, left_bytes);
+      nya_stream_write(&sin_midi, &chunk, 1);
+    } */
 }
 
 int murth_get_event(murth_event_t *event) {

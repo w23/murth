@@ -40,7 +40,7 @@ int murth_get_event(murth_event_t *event);
 //! \attention this function is assumed to be called not more from than one thread
 //! simultaneously, but the thread is not required to be the same as for synthesizing
 //! \attention midi stream data is assumed to be valid
-void murth_process_raw_midi(const void *packet, int bytes);
+void murth_process_raw_midi(const void *packet, int bytes, int sync);
 
 //! \todo Debug connection to read technical events, errors and warnings.
 //! \todo Tap connection to get raw samples from user-specified points.
